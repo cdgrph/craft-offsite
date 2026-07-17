@@ -1,0 +1,103 @@
+{# --- Status summary --- #}
+<div class="field" style="margin-bottom: 24px;">
+    {% if settingsErrors | length %}
+        <div class="warning-alert warning with-icon" style="margin-bottom: 14px;">
+            <strong>Settings invalid</strong> — fix the following before running a backup:
+            <ul style="margin: 8px 0 0 0;">
+                {% for error in settingsErrors %}
+                    <li>{{ error }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+    {% endif %}
+
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;">
+        {% if warn %}
+            <div>
+                {% if lastBackupAgo is null %}
+                    <span class="status red"></span>
+                    <span>No committed backup yet</span>
+                {% else %}
+                    <span class="status red"></span>
+                    <span>Last backup {{ lastBackupAgo }}</span>
+                {% endif %}
+            </div>
+        {% else %}
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span class="status green"></span>
+                <span>Last backup {{ lastBackupAgo }}</span>
+            </div>
+        {% endif %}
+
+        <form method="post" accept-charset="UTF-8" style="margin: 0;">
+            {{ csrfInput() }}
+            {{ actionInput('offsite/run/enqueue') }}
+            {{ redirectInput('utilities/offsite') }}
+            <button type="submit" class="btn submit"
+                {% if settingsErrors | length %}
+                    disabled
+                    title="Fix settings errors before running a backup"
+                {% endif %}
+            >Run backup now</button>
+        </form>
+    </div>
+
+    {% if warn and lastBackupAgo is not null %}
+        <div class="warning-alert warning with-icon" style="margin-bottom: 14px;">
+            Check your cron and the external heartbeat monitor.
+        </div>
+    {% endif %}
+
+    {% if warn and lastBackupAgo is null %}
+        <div class="warning-alert warning with-icon" style="margin-bottom: 14px;">
+            Configure a cron entry for <code>craft offsite/backup/db</code> and run it once.
+        </div>
+    {% endif %}
+
+    {% for warning in channelWarnings %}
+        <div class="warning-alert warning with-icon" style="margin-bottom: 14px;">
+            {{ warning }}
+        </div>
+    {% endfor %}
+</div>
+
+{# --- Run history --- #}
+<hr>
+
+<h2 style="margin-bottom: 14px;">Run History</h2>
+
+<table class="data fullwidth">
+    <thead>
+        <tr>
+            <th>Run</th>
+            <th>Started</th>
+            <th>Size</th>
+            <th>Duration</th>
+            <th>Status</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for row in rows %}
+        <tr>
+            <td><code>{{ row.runId }}</code></td>
+            <td>{{ row.startedAt ? row.startedAt | datetime('short') : '—' }}</td>
+            <td>{{ row.size ?? '—' }}</td>
+            <td>{{ row.duration ?? '—' }}</td>
+            <td>
+                {% if row.backupStatus == 'committed' %}
+                    <span class="status green"></span>committed
+                {% else %}
+                    <span class="status red"></span>{{ row.backupStatus }}
+                    {% if row.error %}
+                        <div class="light" style="font-size: 0.85em; margin-top: 2px;">
+                            {{ row.error }}
+                        </div>
+                    {% endif %}
+                {% endif %}
+            </td>
+        </tr>
+    {% else %}
+        <tr><td colspan="5">No runs recorded on this environment yet.</td></tr>
+    {% endfor %}
+    </tbody>
+</table>

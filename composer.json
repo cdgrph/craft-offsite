@@ -1,0 +1,37 @@
+{
+    "name": "cdgrph/craft-offsite",
+    "description": "Off-site database backups for Craft you can actually restore — integrity-verified, monitored, and recoverable from the bucket alone.",
+    "type": "craft-plugin",
+    "license": "proprietary",
+    "homepage": "https://github.com/cdgrph/craft-offsite",
+    "keywords": ["craft", "cms", "craftcms", "craft-plugin", "backup", "database", "s3", "off-site"],
+    "authors": [
+        { "name": "Codegraph Inc.", "homepage": "https://cdgrph.com" }
+    ],
+    "support": {
+        "email": "hello@cdgrph.com",
+        "issues": "https://github.com/cdgrph/craft-offsite/issues",
+        "source": "https://github.com/cdgrph/craft-offsite",
+        "docs": "https://github.com/cdgrph/craft-offsite/blob/main/README.md"
+    },
+    "require": {
+        "php": "^8.2",
+        "craftcms/cms": "^5.0",
+        "aws/aws-sdk-php": "^3.300",
+        "ext-zip": "*",
+        "ext-curl": "*"
+    },
+    "require-dev": { "phpunit/phpunit": "^10.5" },
+    "autoload": { "psr-4": { "cdgrph\\offsite\\": "src/" } },
+    "autoload-dev": { "psr-4": { "cdgrph\\offsite\\tests\\": "tests/" } },
+    "extra": {
+        "class": "cdgrph\\offsite\\Plugin",
+        "handle": "offsite",
+        "name": "Offsite",
+        "developer": "Codegraph Inc.",
+        "developerUrl": "https://cdgrph.com",
+        "documentationUrl": "https://github.com/cdgrph/craft-offsite/blob/main/README.md",
+        "changelogUrl": "https://raw.githubusercontent.com/cdgrph/craft-offsite/main/CHANGELOG.md"
+    },
+    "config": { "allow-plugins": { "yiisoft/yii2-composer": true, "craftcms/plugin-installer": true } }
+}
