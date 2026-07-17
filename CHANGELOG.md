@@ -1,6 +1,6 @@
 # Release Notes for Offsite
 
-## Unreleased
+## 1.0.0-beta.1 - 2026-07-18
 
 ### Added
 - Initial release: scheduled off-site database backups for Craft CMS 5.
