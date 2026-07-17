@@ -6,7 +6,7 @@
     "homepage": "https://github.com/cdgrph/craft-offsite",
     "keywords": ["craft", "cms", "craftcms", "craft-plugin", "backup", "database", "s3", "off-site"],
     "authors": [
-        { "name": "Codegraph Inc.", "homepage": "https://cdgrph.com" }
+        { "name": "Codegraph", "homepage": "https://cdgrph.com" }
     ],
     "support": {
         "email": "hello@cdgrph.com",
@@ -28,7 +28,7 @@
         "class": "cdgrph\\offsite\\Plugin",
         "handle": "offsite",
         "name": "Offsite",
-        "developer": "Codegraph Inc.",
+        "developer": "Codegraph",
         "developerUrl": "https://cdgrph.com",
         "documentationUrl": "https://github.com/cdgrph/craft-offsite/blob/main/README.md",
         "changelogUrl": "https://raw.githubusercontent.com/cdgrph/craft-offsite/main/CHANGELOG.md"
