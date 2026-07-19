@@ -3,6 +3,7 @@
     <testsuites>
         <testsuite name="engine"><directory>tests/engine</directory></testsuite>
         <testsuite name="models"><directory>tests/models</directory></testsuite>
+        <testsuite name="utilities"><directory>tests/utilities</directory></testsuite>
         <testsuite name="integration"><directory>tests/integration</directory></testsuite>
     </testsuites>
 </phpunit>

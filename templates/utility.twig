@@ -13,17 +13,17 @@
 
     <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;">
         {% if warn %}
-            <div>
+            <div style="display: flex; align-items: center;">
                 {% if lastBackupAgo is null %}
                     <span class="status red"></span>
                     <span>No committed backup yet</span>
                 {% else %}
-                    <span class="status red"></span>
-                    <span>Last backup {{ lastBackupAgo }}</span>
+                    <span class="status pending"></span>
+                    <span>Backup overdue — last successful backup {{ lastBackupAgo }}</span>
                 {% endif %}
             </div>
         {% else %}
-            <div style="display: flex; align-items: center; gap: 8px;">
+            <div style="display: flex; align-items: center;">
                 <span class="status green"></span>
                 <span>Last backup {{ lastBackupAgo }}</span>
             </div>
@@ -44,7 +44,7 @@
 
     {% if warn and lastBackupAgo is not null %}
         <div class="warning-alert warning with-icon" style="margin-bottom: 14px;">
-            Check your cron and the external heartbeat monitor.
+            No backup has been committed in the last {{ warnAfterHours }} hours. Check your cron and the external heartbeat monitor.
         </div>
     {% endif %}
 

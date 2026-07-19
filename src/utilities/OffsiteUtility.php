@@ -10,6 +10,18 @@ use craft\base\Utility;
 
 final class OffsiteUtility extends Utility
 {
+    /** Hours without a committed backup before the utility warns that backups are overdue. */
+    private const WARN_AFTER_HOURS = 48;
+
+    /**
+     * Whether backups are overdue, given the seconds elapsed since the last
+     * committed backup. Null means no backup has ever been committed.
+     */
+    public static function isOverdue(?int $staleSec): bool
+    {
+        return $staleSec === null || $staleSec >= self::WARN_AFTER_HOURS * 3600;
+    }
+
     public static function displayName(): string
     {
         return 'Offsite Backups';
@@ -82,7 +94,8 @@ final class OffsiteUtility extends Utility
         return \Craft::$app->getView()->renderTemplate('offsite/utility.twig', [
             'rows' => $enrichedRows,
             'lastBackupAgo' => $staleSec !== null ? self::humanDuration($staleSec) : null,
-            'warn' => $staleSec === null || $staleSec > 48 * 3600,
+            'warn' => self::isOverdue($staleSec),
+            'warnAfterHours' => self::WARN_AFTER_HOURS,
             'channelWarnings' => $channelWarnings,
             'settingsErrors' => $settingsErrors,
         ]);
