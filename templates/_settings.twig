@@ -28,7 +28,7 @@
 
 {{ forms.autosuggestField({
     label: 'Region',
-    instructions: 'Environment variable containing the S3 region.',
+    instructions: 'Environment variable containing the S3 region. Required when no custom endpoint is set.',
     id: 'region',
     name: 'region',
     value: settings.cpDisplayValue('region'),
@@ -47,6 +47,7 @@
     value: settings.cpDisplayValue('bucket'),
     suggestEnvVars: true,
     placeholder: '$OFFSITE_BUCKET',
+    required: 'bucket' not in overriddenFields,
     disabled: 'bucket' in overriddenFields,
     warning: 'bucket' in overriddenFields ? overrideWarning|format('bucket') : null,
     errors: settings.getErrors('bucket'),
