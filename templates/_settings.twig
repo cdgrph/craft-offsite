@@ -1,0 +1,86 @@
+{% import '_includes/forms' as forms %}
+
+{% set overrideWarning = 'This is being overridden by the `%s` setting in `config/offsite.php`.' %}
+
+<p class="notice with-icon">
+    Settings saved here are stored in project config and propagate to other
+    environments on deploy. Any key set in <code>config/offsite.php</code>
+    overrides them. Credentials and infrastructure settings (endpoint, region,
+    bucket, key prefix, access keys, notification URLs) live only in
+    <code>config/offsite.php</code> and are never stored in the database or
+    project config.
+</p>
+
+{{ forms.selectField({
+    label: 'Retention Mode',
+    instructions: 'How old backup generations get deleted. Plugin pruning requires S3 delete permission; lifecycle mode never deletes anything, so create a bucket lifecycle rule or generations accumulate without limit.',
+    id: 'retentionMode',
+    name: 'retentionMode',
+    options: [
+        { label: 'The plugin prunes generations beyond the keep count', value: 'plugin' },
+        { label: 'A bucket lifecycle rule prunes old generations', value: 'lifecycle' },
+    ],
+    value: settings.retentionMode,
+    toggle: true,
+    targetPrefix: '.retention-',
+    disabled: 'retentionMode' in overriddenFields,
+    warning: 'retentionMode' in overriddenFields ? overrideWarning|format('retentionMode') : null,
+    errors: settings.getErrors('retentionMode'),
+}) }}
+
+<div class="retention-plugin{% if settings.retentionMode != 'plugin' %} hidden{% endif %}">
+    {{ forms.textField({
+        label: 'Generations to Keep',
+        id: 'retentionKeepCount',
+        name: 'retentionKeepCount',
+        type: 'number',
+        min: 1,
+        step: 1,
+        required: true,
+        value: settings.retentionKeepCount,
+        disabled: 'retentionKeepCount' in overriddenFields,
+        warning: 'retentionKeepCount' in overriddenFields ? overrideWarning|format('retentionKeepCount') : null,
+        errors: settings.getErrors('retentionKeepCount'),
+    }) }}
+</div>
+
+{{ forms.lightswitchField({
+    label: 'Notify on Success',
+    instructions: 'Also send notifications for successful runs. Failures always notify.',
+    id: 'notifyOnSuccess',
+    name: 'notifyOnSuccess',
+    on: settings.notifyOnSuccess,
+    disabled: 'notifyOnSuccess' in overriddenFields,
+    warning: 'notifyOnSuccess' in overriddenFields ? overrideWarning|format('notifyOnSuccess') : null,
+    errors: settings.getErrors('notifyOnSuccess'),
+}) }}
+
+{{ forms.textField({
+    label: 'Minimum Free Disk Space (MB)',
+    instructions: 'The backup run aborts before starting if the work directory has less free space than this. Budget roughly 3× your uncompressed dump size.',
+    id: 'minFreeDiskMb',
+    name: 'minFreeDiskMb',
+    type: 'number',
+    min: 1,
+    step: 1,
+    required: true,
+    value: settings.minFreeDiskMb,
+    disabled: 'minFreeDiskMb' in overriddenFields,
+    warning: 'minFreeDiskMb' in overriddenFields ? overrideWarning|format('minFreeDiskMb') : null,
+    errors: settings.getErrors('minFreeDiskMb'),
+}) }}
+
+{{ forms.textField({
+    label: 'Multipart Upload Threshold (MB)',
+    instructions: 'Files larger than this use S3 multipart upload. S3 requires parts of at least 5 MB.',
+    id: 'multipartThresholdMb',
+    name: 'multipartThresholdMb',
+    type: 'number',
+    min: 5,
+    step: 1,
+    required: true,
+    value: settings.multipartThresholdMb,
+    disabled: 'multipartThresholdMb' in overriddenFields,
+    warning: 'multipartThresholdMb' in overriddenFields ? overrideWarning|format('multipartThresholdMb') : null,
+    errors: settings.getErrors('multipartThresholdMb'),
+}) }}

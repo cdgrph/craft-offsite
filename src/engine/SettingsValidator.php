@@ -5,6 +5,12 @@ namespace cdgrph\offsite\engine;
 
 final class SettingsValidator
 {
+    /** Shared with models\Settings::defineRules() so CP validation cannot drift. */
+    public const RETENTION_MODES = [RetentionPolicy::MODE_PLUGIN, RetentionPolicy::MODE_LIFECYCLE];
+    public const MIN_KEEP_COUNT = 1;
+    public const MIN_MULTIPART_MB = 5;
+    public const MIN_FREE_DISK_MB = 1;
+
     /** @param array<string, mixed> $s resolved (env-parsed) settings @return list<string> channel labels */
     public function monitoringChannels(array $s): array
     {
@@ -43,10 +49,10 @@ final class SettingsValidator
             $errors[] = 'region is required when no custom endpoint is set.';
         }
         $mode = $s['retentionMode'] ?? 'plugin';
-        if (!\in_array($mode, ['plugin', 'lifecycle'], true)) {
+        if (!\in_array($mode, self::RETENTION_MODES, true)) {
             $errors[] = "retentionMode must be 'plugin' or 'lifecycle', got '{$mode}'.";
         }
-        if ((int)($s['retentionKeepCount'] ?? 0) < 1) {
+        if ((int)($s['retentionKeepCount'] ?? 0) < self::MIN_KEEP_COUNT) {
             $errors[] = 'retentionKeepCount must be >= 1.';
         }
 
@@ -69,10 +75,10 @@ final class SettingsValidator
         if ((($s['accessKey'] ?? '') !== '') !== (($s['secretKey'] ?? '') !== '')) {
             $errors[] = 'accessKey and secretKey must be set together (leave both empty to use the SDK credential chain).';
         }
-        if ((int)($s['multipartThresholdMb'] ?? 100) < 5) {
+        if ((int)($s['multipartThresholdMb'] ?? 100) < self::MIN_MULTIPART_MB) {
             $errors[] = 'multipartThresholdMb must be >= 5 (the S3 multipart minimum part size).';
         }
-        if ((int)($s['minFreeDiskMb'] ?? 2048) < 1) {
+        if ((int)($s['minFreeDiskMb'] ?? 2048) < self::MIN_FREE_DISK_MB) {
             $errors[] = 'minFreeDiskMb must be >= 1.';
         }
         return $errors;
