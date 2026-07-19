@@ -14,6 +14,16 @@ use PHPUnit\Framework\TestCase;
  */
 final class SettingsTest extends TestCase
 {
+    private static function withConnection(array $attributes = []): Settings
+    {
+        $settings = new Settings();
+        $settings->setAttributes($attributes + [
+            'bucket' => '$OFFSITE_BUCKET',
+            'region' => '$OFFSITE_REGION',
+        ], false);
+        return $settings;
+    }
+
     public function testSerializesOnlyCpFields(): void
     {
         $keys = array_keys((new Settings())->toArray());
@@ -125,24 +135,60 @@ final class SettingsTest extends TestCase
         $s->setAttributes($references, false);
         self::assertTrue($s->validate(), \print_r($s->getErrors(), true));
 
-        $s = new Settings();
+        $s = self::withConnection();
         $s->secretKey = '$offsite_secret';
         self::assertTrue($s->validate(), \print_r($s->getErrors(), true));
 
-        $s = new Settings();
-        $s->setAttributes(\array_fill_keys(Settings::ENV_REFERENCE_FIELDS, ''), false);
+        $optionalFields = \array_diff(Settings::ENV_REFERENCE_FIELDS, ['bucket', 'region']);
+        $s = self::withConnection(\array_fill_keys($optionalFields, ''));
         self::assertTrue($s->validate(), \print_r($s->getErrors(), true));
     }
 
     public function testConfigFileKeysSkipReferenceValidation(): void
     {
-        $s = new Settings();
+        $s = self::withConnection();
         $s->setConfigFileKeys(['secretKey']);
         $s->secretKey = 'raw-from-config-file';
 
         self::assertTrue($s->validate(), \print_r($s->getErrors(), true));
         self::assertSame([], $s->getErrors('secretKey'));
         self::assertSame('', $s->toArray()['secretKey']);
+    }
+
+    public function testBucketRequired(): void
+    {
+        $s = self::withConnection(['bucket' => '']);
+        self::assertFalse($s->validate());
+        self::assertNotEmpty($s->getErrors('bucket'));
+
+        $s = self::withConnection(['bucket' => '']);
+        $s->setConfigFileKeys(['bucket']);
+        self::assertTrue($s->validate(), \print_r($s->getErrors(), true));
+    }
+
+    public function testRegionRequiredOnlyWithoutEndpoint(): void
+    {
+        $s = self::withConnection(['endpoint' => '', 'region' => '']);
+        self::assertFalse($s->validate());
+        self::assertNotEmpty($s->getErrors('region'));
+
+        $s = self::withConnection(['endpoint' => '$OFFSITE_ENDPOINT', 'region' => '']);
+        self::assertTrue($s->validate(), \print_r($s->getErrors(), true));
+
+        $s = self::withConnection(['endpoint' => '', 'region' => '']);
+        $s->setConfigFileKeys(['region']);
+        self::assertTrue($s->validate(), \print_r($s->getErrors(), true));
+
+        $s = self::withConnection(['endpoint' => 'https://s3.example.com', 'region' => '']);
+        $s->setConfigFileKeys(['endpoint']);
+        self::assertTrue($s->validate(), \print_r($s->getErrors(), true));
+
+        // An endpoint override alone must not exempt region — only a non-empty
+        // endpoint value or region's own override does.
+        $s = self::withConnection(['endpoint' => '', 'region' => '']);
+        $s->setConfigFileKeys(['endpoint']);
+        self::assertFalse($s->validate());
+        self::assertNotEmpty($s->getErrors('region'));
     }
 
     public function testExplicitFieldRequestCannotExtractSecrets(): void
@@ -158,8 +204,7 @@ final class SettingsTest extends TestCase
 
     public function testNumericStringsCoerceToIntInSerializedAndResolvedOutput(): void
     {
-        $s = new Settings();
-        $s->setAttributes(['retentionKeepCount' => '25', 'minFreeDiskMb' => '512', 'multipartThresholdMb' => '10'], false);
+        $s = self::withConnection(['retentionKeepCount' => '25', 'minFreeDiskMb' => '512', 'multipartThresholdMb' => '10']);
         self::assertTrue($s->validate(), print_r($s->getErrors(), true));
         self::assertSame(25, $s->toArray()['retentionKeepCount']);
         self::assertSame(512, $s->resolved()['minFreeDiskMb']);
@@ -188,13 +233,11 @@ final class SettingsTest extends TestCase
 
     public function testLightswitchPostValuesCoerceSafely(): void
     {
-        $s = new Settings();
-        $s->setAttributes(['notifyOnSuccess' => '1'], false);
+        $s = self::withConnection(['notifyOnSuccess' => '1']);
         self::assertTrue($s->validate(), print_r($s->getErrors(), true));
         self::assertTrue($s->notifyOnSuccess);
 
-        $s = new Settings();
-        $s->setAttributes(['notifyOnSuccess' => ''], false);
+        $s = self::withConnection(['notifyOnSuccess' => '']);
         self::assertTrue($s->validate(), print_r($s->getErrors(), true));
         self::assertFalse($s->notifyOnSuccess);
     }
@@ -225,19 +268,28 @@ final class SettingsTest extends TestCase
             ['minFreeDiskMb', SettingsValidator::MIN_FREE_DISK_MB - 1, SettingsValidator::MIN_FREE_DISK_MB],
         ];
         foreach ($cases as [$attr, $bad, $good]) {
-            $model = new Settings();
-            $model->setAttributes([$attr => $bad], false);
+            $model = self::withConnection([$attr => $bad]);
             self::assertFalse($model->validate(), "$attr=$bad should fail model rules");
             self::assertNotEmpty($validator->validate([$attr => $bad] + $base), "$attr=$bad should fail engine validator");
 
-            $model = new Settings();
-            $model->setAttributes([$attr => $good], false);
+            $model = self::withConnection([$attr => $good]);
             self::assertTrue($model->validate(), "$attr=$good should pass model rules: " . print_r($model->getErrors(), true));
             self::assertSame([], $validator->validate([$attr => $good] + $base), "$attr=$good should pass engine validator");
         }
 
-        $model = new Settings();
-        $model->setAttributes(['retentionMode' => 'bogus'], false);
+        $model = self::withConnection(['bucket' => '']);
+        self::assertFalse($model->validate(), 'Empty bucket should fail model rules');
+        self::assertNotEmpty($validator->validate(['bucket' => ''] + $base), 'Empty bucket should fail engine validator');
+
+        $model = self::withConnection(['endpoint' => '', 'region' => '']);
+        self::assertFalse($model->validate(), 'Empty region without an endpoint should fail model rules');
+        self::assertNotEmpty($validator->validate(['region' => ''] + $base), 'Empty region without an endpoint should fail engine validator');
+
+        $model = self::withConnection(['endpoint' => '$OFFSITE_ENDPOINT', 'region' => '']);
+        self::assertTrue($model->validate(), 'Empty region with an endpoint should pass model rules: ' . print_r($model->getErrors(), true));
+        self::assertSame([], $validator->validate(['region' => '', 'endpoint' => 'https://s3.example.com'] + $base), 'Empty region with an endpoint should pass engine validator');
+
+        $model = self::withConnection(['retentionMode' => 'bogus']);
         self::assertFalse($model->validate());
         self::assertNotEmpty($validator->validate(['retentionMode' => 'bogus'] + $base));
     }

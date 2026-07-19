@@ -6,6 +6,9 @@
 - Operational settings (retention mode, generations to keep, notify on success, minimum free disk space, multipart threshold) are now editable in the control panel.
 - Connection and notification settings (endpoint, region, bucket, key prefix, access keys, Slack webhook URL, notification email, heartbeat URL) can now be set in the control panel as environment variable references such as `$OFFSITE_SECRET_KEY`. Raw values are rejected — real values stay in `.env`, and only the reference is stored in project config. `config/offsite.php` keys still override control-panel values.
 
+### Changed
+- The control panel now requires the bucket setting, and the region setting when no custom endpoint is set — matching the runtime validator so an incomplete setup fails at save time instead of at the first backup run. Keys overridden in `config/offsite.php` are exempt, so a config-file override can never block saving.
+
 ## 1.0.0-beta.1 - 2026-07-18
 
 ### Added

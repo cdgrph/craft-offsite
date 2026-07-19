@@ -130,6 +130,24 @@ final class Settings extends Model
     {
         return [
             [['retentionMode', 'retentionKeepCount', 'minFreeDiskMb', 'multipartThresholdMb'], 'required'],
+            // Mirror engine\SettingsValidator::validate() so incomplete setup fails on save.
+            // Presence is checked on the raw attributes (env reference or config-file value);
+            // resolved values stay the engine validator's responsibility at run time.
+            // Config-file overrides are exempt because the CP cannot edit their values and
+            // must never be blocked from saving by them.
+            [
+                'bucket',
+                'required',
+                'message' => 'Bucket is required — enter an environment variable reference like $OFFSITE_BUCKET (put the real value in .env).',
+                'when' => fn(self $model): bool => !\in_array('bucket', $model->getConfigFileKeys(), true),
+            ],
+            [
+                'region',
+                'required',
+                'message' => 'Region is required when no custom endpoint is set — enter an environment variable reference like $OFFSITE_REGION.',
+                'when' => fn(self $model): bool => $model->endpoint === ''
+                    && !\in_array('region', $model->getConfigFileKeys(), true),
+            ],
             ['retentionMode', 'in', 'range' => SettingsValidator::RETENTION_MODES, 'strict' => true],
             ['retentionKeepCount', 'integer', 'min' => SettingsValidator::MIN_KEEP_COUNT],
             ['minFreeDiskMb', 'integer', 'min' => SettingsValidator::MIN_FREE_DISK_MB],
