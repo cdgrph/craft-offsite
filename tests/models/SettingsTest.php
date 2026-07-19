@@ -23,26 +23,137 @@ final class SettingsTest extends TestCase
         self::assertSame($expected, $keys);
     }
 
-    public function testSecretsNeverInSerializedOutput(): void
+    public function testRawValuesNeverSerialized(): void
     {
         $s = new Settings();
-        $s->accessKey = 'AKIAEXAMPLE';
-        $s->secretKey = 'topsecret';
-        $s->bucket = 'example-bucket';
-        $s->slackWebhookUrl = 'https://hooks.example.com/services/x';
+        $rawValues = [
+            'endpoint' => 'https://s3.example.com',
+            'region' => 'us-east-1',
+            'bucket' => 'example-bucket',
+            'keyPrefix' => 'backups',
+            'accessKey' => 'AKIAEXAMPLE',
+            'secretKey' => 'topsecret',
+            'slackWebhookUrl' => 'https://hooks.example.com/services/x',
+            'notifyEmail' => 'ops@example.com',
+            'heartbeatUrl' => 'https://heartbeat.example.com/x',
+        ];
+        $s->setAttributes($rawValues, false);
         $arr = $s->toArray();
-        foreach (['accessKey', 'secretKey', 'bucket', 'endpoint', 'slackWebhookUrl', 'heartbeatUrl', 'notifyEmail', 'keyPrefix', 'region', 'allowInsecureHttp'] as $secret) {
-            self::assertArrayNotHasKey($secret, $arr);
+
+        foreach (Settings::ENV_REFERENCE_FIELDS as $attribute) {
+            self::assertSame('', $arr[$attribute]);
         }
+    }
+
+    public function testEnvReferencesSerializeVerbatim(): void
+    {
+        $references = [
+            'endpoint' => '$OFFSITE_ENDPOINT',
+            'region' => '$OFFSITE_REGION',
+            'bucket' => '$OFFSITE_BUCKET',
+            'keyPrefix' => '$OFFSITE_KEY_PREFIX',
+            'accessKey' => '$OFFSITE_ACCESS_KEY',
+            'secretKey' => '$OFFSITE_SECRET_KEY',
+            'slackWebhookUrl' => '$OFFSITE_SLACK_WEBHOOK_URL',
+            'notifyEmail' => '$OFFSITE_NOTIFY_EMAIL',
+            'heartbeatUrl' => '$OFFSITE_HEARTBEAT_URL',
+        ];
+        $s = new Settings();
+        $s->setAttributes($references, false);
+
+        foreach ($references as $attribute => $reference) {
+            self::assertSame($reference, $s->toArray()[$attribute]);
+        }
+    }
+
+    public function testCpDisplayValueMasksRawValues(): void
+    {
+        $s = new Settings();
+        $s->secretKey = 'raw-from-config-file';
+        self::assertSame('', $s->cpDisplayValue('secretKey'));
+
+        $s->secretKey = '$OFFSITE_SECRET_KEY' . "\n";
+        self::assertSame('', $s->cpDisplayValue('secretKey'));
+
+        $s->secretKey = '$OFFSITE_SECRET_KEY';
+        self::assertSame('$OFFSITE_SECRET_KEY', $s->cpDisplayValue('secretKey'));
+    }
+
+    public function testRawValuesFailValidation(): void
+    {
+        $rawValues = [
+            'endpoint' => 'https://s3.example.com',
+            'region' => 'us-east-1',
+            'bucket' => 'example-bucket',
+            'keyPrefix' => 'backups',
+            'accessKey' => 'AKIAEXAMPLE',
+            'secretKey' => 'topsecret',
+            'slackWebhookUrl' => 'https://hooks.example.com/services/x',
+            'notifyEmail' => 'ops@example.com',
+            'heartbeatUrl' => 'https://heartbeat.example.com/x',
+        ];
+
+        foreach ($rawValues as $attribute => $rawValue) {
+            $s = new Settings();
+            $s->setAttributes([$attribute => $rawValue], false);
+            self::assertFalse($s->validate(), "$attribute should reject raw values");
+            self::assertNotEmpty($s->getErrors($attribute));
+        }
+
+        foreach (['$OFFSITE_X' . "\n", '$', '${OFFSITE_X}'] as $invalidReference) {
+            $s = new Settings();
+            $s->bucket = $invalidReference;
+            self::assertFalse($s->validate(), 'Invalid environment variable references should fail validation');
+            self::assertNotEmpty($s->getErrors('bucket'));
+        }
+    }
+
+    public function testEnvReferencesAndEmptyPassValidation(): void
+    {
+        $references = [
+            'endpoint' => '$OFFSITE_ENDPOINT',
+            'region' => '$OFFSITE_REGION',
+            'bucket' => '$OFFSITE_BUCKET',
+            'keyPrefix' => '$OFFSITE_KEY_PREFIX',
+            'accessKey' => '$OFFSITE_ACCESS_KEY',
+            'secretKey' => '$OFFSITE_SECRET_KEY',
+            'slackWebhookUrl' => '$OFFSITE_SLACK_WEBHOOK_URL',
+            'notifyEmail' => '$OFFSITE_NOTIFY_EMAIL',
+            'heartbeatUrl' => '$OFFSITE_HEARTBEAT_URL',
+        ];
+        $s = new Settings();
+        $s->setAttributes($references, false);
+        self::assertTrue($s->validate(), \print_r($s->getErrors(), true));
+
+        $s = new Settings();
+        $s->secretKey = '$offsite_secret';
+        self::assertTrue($s->validate(), \print_r($s->getErrors(), true));
+
+        $s = new Settings();
+        $s->setAttributes(\array_fill_keys(Settings::ENV_REFERENCE_FIELDS, ''), false);
+        self::assertTrue($s->validate(), \print_r($s->getErrors(), true));
+    }
+
+    public function testConfigFileKeysSkipReferenceValidation(): void
+    {
+        $s = new Settings();
+        $s->setConfigFileKeys(['secretKey']);
+        $s->secretKey = 'raw-from-config-file';
+
+        self::assertTrue($s->validate(), \print_r($s->getErrors(), true));
+        self::assertSame([], $s->getErrors('secretKey'));
+        self::assertSame('', $s->toArray()['secretKey']);
     }
 
     public function testExplicitFieldRequestCannotExtractSecrets(): void
     {
         // Craft 5.9+ saves toArray(array_keys($post)); requested names resolve
-        // as an intersection with fields(), so secret names must drop out.
+        // as an intersection with fields(), while serialized environment fields
+        // still pass through the raw-value guard.
         $s = new Settings();
         $s->secretKey = 'topsecret';
-        self::assertSame(['retentionMode' => 'plugin'], $s->toArray(['secretKey', 'accessKey', 'retentionMode']));
+        self::assertSame(['retentionMode' => 'plugin'], $s->toArray(['allowInsecureHttp', 'retentionMode']));
+        self::assertSame(['secretKey' => ''], $s->toArray(['secretKey']));
     }
 
     public function testNumericStringsCoerceToIntInSerializedAndResolvedOutput(): void

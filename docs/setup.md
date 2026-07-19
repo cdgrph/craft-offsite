@@ -1,8 +1,8 @@
 # Setup & Configuration
 
-Secrets and infrastructure settings live in `config/offsite.php`. Secrets are **never** stored in the database or project config — use environment variable references (`$VAR_NAME`) which are resolved at runtime via `App::parseEnv()`.
+All settings can be managed in the control panel (**Settings → Plugins → Offsite**). Connection and notification fields accept only environment variable references (`$VAR_NAME`, resolved at runtime via `App::parseEnv()`) — put the real values in `.env`. Raw values are rejected, so secrets are **never** stored in the database or project config.
 
-Five operational settings (`retentionMode`, `retentionKeepCount`, `notifyOnSuccess`, `minFreeDiskMb`, `multipartThresholdMb`) can also be edited in the control panel (**Settings → Plugins → Offsite**). Control-panel values are stored in project config and propagate to other environments on deploy. A key present in `config/offsite.php` always overrides the control-panel value — overridden fields are shown disabled with a warning.
+Control-panel values are stored in project config and propagate to other environments on deploy. Alternatively, define any key in `config/offsite.php` (raw values allowed there): a key present in the config file always overrides the control-panel value — overridden fields are shown disabled with a warning.
 
 ## All settings
 
