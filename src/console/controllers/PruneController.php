@@ -74,7 +74,7 @@ final class PruneController extends Controller
             $catalog = $factory->catalog();
             $dest = $factory->destination();
             $siteUid = (string)\Craft::$app->getInfo()->uid;
-            $policy = new RetentionPolicy($s->retentionMode, $s->retentionKeepCount);
+            $policy = new RetentionPolicy($s->retentionMode, (int)$s->retentionKeepCount);
             // Never sweep up other sites' generations (Codex review B7). Delete the
             // catalog entry first (Codex review S10)
             $mine = array_values(array_filter($catalog->all(), fn($e) => $e->siteUid === $siteUid));

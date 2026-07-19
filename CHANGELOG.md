@@ -1,5 +1,10 @@
 # Release Notes for Offsite
 
+## Unreleased
+
+### Added
+- Operational settings (retention mode, generations to keep, notify on success, minimum free disk space, multipart threshold) are now editable in the control panel. Secrets and infrastructure settings remain config-file only and are never stored in project config.
+
 ## 1.0.0-beta.1 - 2026-07-18
 
 ### Added
