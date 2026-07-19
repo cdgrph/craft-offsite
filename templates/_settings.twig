@@ -4,12 +4,96 @@
 
 <p class="notice with-icon">
     Settings saved here are stored in project config and propagate to other
-    environments on deploy. Any key set in <code>config/offsite.php</code>
-    overrides them. Credentials and infrastructure settings (endpoint, region,
-    bucket, key prefix, access keys, notification URLs) live only in
-    <code>config/offsite.php</code> and are never stored in the database or
-    project config.
+    environments on deploy. Connection and notification fields only accept
+    environment variable references such as <code>$OFFSITE_BUCKET</code>; put
+    their real values in <code>.env</code>. Leave the access key fields blank
+    to use the AWS SDK default credential provider chain. Any key set in
+    <code>config/offsite.php</code> always overrides its CP value.
 </p>
+
+<h2>S3 Connection</h2>
+
+{{ forms.autosuggestField({
+    label: 'S3 Endpoint URL',
+    instructions: 'Environment variable containing the S3-compatible endpoint URL.',
+    id: 'endpoint',
+    name: 'endpoint',
+    value: settings.cpDisplayValue('endpoint'),
+    suggestEnvVars: true,
+    placeholder: '$OFFSITE_ENDPOINT',
+    disabled: 'endpoint' in overriddenFields,
+    warning: 'endpoint' in overriddenFields ? overrideWarning|format('endpoint') : null,
+    errors: settings.getErrors('endpoint'),
+}) }}
+
+{{ forms.autosuggestField({
+    label: 'Region',
+    instructions: 'Environment variable containing the S3 region.',
+    id: 'region',
+    name: 'region',
+    value: settings.cpDisplayValue('region'),
+    suggestEnvVars: true,
+    placeholder: '$OFFSITE_REGION',
+    disabled: 'region' in overriddenFields,
+    warning: 'region' in overriddenFields ? overrideWarning|format('region') : null,
+    errors: settings.getErrors('region'),
+}) }}
+
+{{ forms.autosuggestField({
+    label: 'Bucket',
+    instructions: 'Environment variable containing the S3 bucket name.',
+    id: 'bucket',
+    name: 'bucket',
+    value: settings.cpDisplayValue('bucket'),
+    suggestEnvVars: true,
+    placeholder: '$OFFSITE_BUCKET',
+    disabled: 'bucket' in overriddenFields,
+    warning: 'bucket' in overriddenFields ? overrideWarning|format('bucket') : null,
+    errors: settings.getErrors('bucket'),
+}) }}
+
+{{ forms.autosuggestField({
+    label: 'Key Prefix',
+    instructions: 'Environment variable containing the optional S3 object key prefix.',
+    id: 'keyPrefix',
+    name: 'keyPrefix',
+    value: settings.cpDisplayValue('keyPrefix'),
+    suggestEnvVars: true,
+    placeholder: '$OFFSITE_KEY_PREFIX',
+    disabled: 'keyPrefix' in overriddenFields,
+    warning: 'keyPrefix' in overriddenFields ? overrideWarning|format('keyPrefix') : null,
+    errors: settings.getErrors('keyPrefix'),
+}) }}
+
+{{ forms.autosuggestField({
+    label: 'Access Key ID',
+    instructions: 'Environment variable containing the access key ID. Leave blank to use the AWS SDK credential provider chain.',
+    id: 'accessKey',
+    name: 'accessKey',
+    value: settings.cpDisplayValue('accessKey'),
+    suggestEnvVars: true,
+    placeholder: '$OFFSITE_ACCESS_KEY',
+    disabled: 'accessKey' in overriddenFields,
+    warning: 'accessKey' in overriddenFields ? overrideWarning|format('accessKey') : null,
+    errors: settings.getErrors('accessKey'),
+}) }}
+
+{{ forms.autosuggestField({
+    label: 'Secret Access Key',
+    instructions: 'Environment variable containing the secret access key. Leave blank to use the AWS SDK credential provider chain.',
+    id: 'secretKey',
+    name: 'secretKey',
+    value: settings.cpDisplayValue('secretKey'),
+    suggestEnvVars: true,
+    placeholder: '$OFFSITE_SECRET_KEY',
+    disabled: 'secretKey' in overriddenFields,
+    warning: 'secretKey' in overriddenFields ? overrideWarning|format('secretKey') : null,
+    errors: settings.getErrors('secretKey'),
+}) }}
+
+<hr>
+
+<h2>Retention</h2>
 
 {{ forms.selectField({
     label: 'Retention Mode',
@@ -44,16 +128,9 @@
     }) }}
 </div>
 
-{{ forms.lightswitchField({
-    label: 'Notify on Success',
-    instructions: 'Also send notifications for successful runs. Failures always notify.',
-    id: 'notifyOnSuccess',
-    name: 'notifyOnSuccess',
-    on: settings.notifyOnSuccess,
-    disabled: 'notifyOnSuccess' in overriddenFields,
-    warning: 'notifyOnSuccess' in overriddenFields ? overrideWarning|format('notifyOnSuccess') : null,
-    errors: settings.getErrors('notifyOnSuccess'),
-}) }}
+<hr>
+
+<h2>Runtime</h2>
 
 {{ forms.textField({
     label: 'Minimum Free Disk Space (MB)',
@@ -83,4 +160,58 @@
     disabled: 'multipartThresholdMb' in overriddenFields,
     warning: 'multipartThresholdMb' in overriddenFields ? overrideWarning|format('multipartThresholdMb') : null,
     errors: settings.getErrors('multipartThresholdMb'),
+}) }}
+
+<hr>
+
+<h2>Notifications</h2>
+
+{{ forms.autosuggestField({
+    label: 'Slack Webhook URL',
+    instructions: 'Environment variable containing the Slack incoming webhook URL.',
+    id: 'slackWebhookUrl',
+    name: 'slackWebhookUrl',
+    value: settings.cpDisplayValue('slackWebhookUrl'),
+    suggestEnvVars: true,
+    placeholder: '$OFFSITE_SLACK_WEBHOOK_URL',
+    disabled: 'slackWebhookUrl' in overriddenFields,
+    warning: 'slackWebhookUrl' in overriddenFields ? overrideWarning|format('slackWebhookUrl') : null,
+    errors: settings.getErrors('slackWebhookUrl'),
+}) }}
+
+{{ forms.autosuggestField({
+    label: 'Notification Email',
+    instructions: 'Environment variable containing the notification email address.',
+    id: 'notifyEmail',
+    name: 'notifyEmail',
+    value: settings.cpDisplayValue('notifyEmail'),
+    suggestEnvVars: true,
+    placeholder: '$OFFSITE_NOTIFY_EMAIL',
+    disabled: 'notifyEmail' in overriddenFields,
+    warning: 'notifyEmail' in overriddenFields ? overrideWarning|format('notifyEmail') : null,
+    errors: settings.getErrors('notifyEmail'),
+}) }}
+
+{{ forms.autosuggestField({
+    label: 'Heartbeat URL',
+    instructions: 'Environment variable containing the heartbeat monitoring URL.',
+    id: 'heartbeatUrl',
+    name: 'heartbeatUrl',
+    value: settings.cpDisplayValue('heartbeatUrl'),
+    suggestEnvVars: true,
+    placeholder: '$OFFSITE_HEARTBEAT_URL',
+    disabled: 'heartbeatUrl' in overriddenFields,
+    warning: 'heartbeatUrl' in overriddenFields ? overrideWarning|format('heartbeatUrl') : null,
+    errors: settings.getErrors('heartbeatUrl'),
+}) }}
+
+{{ forms.lightswitchField({
+    label: 'Notify on Success',
+    instructions: 'Also send notifications for successful runs. Failures always notify.',
+    id: 'notifyOnSuccess',
+    name: 'notifyOnSuccess',
+    on: settings.notifyOnSuccess,
+    disabled: 'notifyOnSuccess' in overriddenFields,
+    warning: 'notifyOnSuccess' in overriddenFields ? overrideWarning|format('notifyOnSuccess') : null,
+    errors: settings.getErrors('notifyOnSuccess'),
 }) }}

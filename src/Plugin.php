@@ -16,7 +16,7 @@ use yii\base\Event;
 final class Plugin extends BasePlugin
 {
     public string $schemaVersion = '1.0.0';
-    public bool $hasCpSettings = true; // Operational settings only — secrets and infrastructure stay in config/offsite.php (Settings::CP_FIELDS)
+    public bool $hasCpSettings = true; // Secrets and infrastructure are entered as environment variable references in CP settings.
 
     public function init(): void
     {
@@ -42,19 +42,22 @@ final class Plugin extends BasePlugin
 
     protected function createSettingsModel(): Settings
     {
-        return new Settings();
+        $model = new Settings();
+        $fileConfig = \Craft::$app->getConfig()->getConfigFromFile('offsite');
+        $model->setConfigFileKeys(\array_keys(\is_array($fileConfig) ? $fileConfig : []));
+
+        return $model;
     }
 
     protected function settingsHtml(): ?string
     {
         // Keys present in config/offsite.php always override CP-saved values;
         // surface that per-field so a "successful" save is never silently inert.
-        $fileConfig = \Craft::$app->getConfig()->getConfigFromFile('offsite');
-        $fileConfig = \is_array($fileConfig) ? $fileConfig : [];
+        $settings = $this->getSettings();
 
         return \Craft::$app->getView()->renderTemplate('offsite/_settings.twig', [
-            'settings' => $this->getSettings(),
-            'overriddenFields' => array_values(array_intersect(Settings::CP_FIELDS, array_keys($fileConfig))),
+            'settings' => $settings,
+            'overriddenFields' => \array_values(\array_intersect(Settings::CP_FIELDS, $settings->getConfigFileKeys())),
         ]);
     }
 }

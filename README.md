@@ -17,7 +17,7 @@ composer require cdgrph/craft-offsite
 php craft plugin/install offsite
 ```
 
-Create `config/offsite.php`:
+Then either configure everything in the control panel (**Settings → Plugins → Offsite**) — connection and notification fields take environment variable references like `$OFFSITE_BUCKET`, with the real values in `.env` — or create `config/offsite.php`:
 
 ```php
 <?php

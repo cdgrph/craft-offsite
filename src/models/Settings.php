@@ -8,19 +8,28 @@ use craft\base\Model;
 use craft\helpers\App;
 
 /**
- * Hybrid settings: the operational settings in CP_FIELDS are
- * editable in the control panel and persisted to project config; everything
- * else — secrets and infrastructure — lives exclusively in config/offsite.php
- * and is never persisted to project config or the DB (spec §5-5).
+ * Hybrid settings: the control panel exposes five operational settings and
+ * nine connection / notification settings that only accept environment
+ * variable references. Raw secrets are rejected by validation and blocked
+ * again by the serialization guard before project config persistence.
  *
- * fields() is restricted to CP_FIELDS because Craft <= 5.8.21 persists the
- * full toArray() on settings save, and later versions still accept
- * hand-crafted POST fields — hiding secrets from the form is not a boundary.
- *
- * accessKey/secretKey empty => AWS SDK default credential provider chain.
+ * config/offsite.php can continue to override every setting, including with
+ * raw values that are never exposed through fields().
  */
 final class Settings extends Model
 {
+    public const ENV_REFERENCE_FIELDS = [
+        'endpoint',
+        'region',
+        'bucket',
+        'keyPrefix',
+        'accessKey',
+        'secretKey',
+        'slackWebhookUrl',
+        'notifyEmail',
+        'heartbeatUrl',
+    ];
+
     /** Attributes editable in the CP and persisted to project config. */
     public const CP_FIELDS = [
         'retentionMode',
@@ -28,7 +37,10 @@ final class Settings extends Model
         'notifyOnSuccess',
         'minFreeDiskMb',
         'multipartThresholdMb',
+        ...self::ENV_REFERENCE_FIELDS,
     ];
+
+    private const ENV_REF_PATTERN = '/^\$\w+$/D';
 
     public string $endpoint = '';
     public string $region = '';
@@ -50,7 +62,39 @@ final class Settings extends Model
     public int|string $multipartThresholdMb = 100;
     public int|string $minFreeDiskMb = 2048;
 
-    /** @return array<string, mixed> only CP fields are ever serialized (secrets stay out of project config) */
+    /**
+     * Keys supplied by config/offsite.php.
+     *
+     * This stays private and is populated through a setter instead of becoming
+     * an attribute, so Craft's setSettings() -> setAttributes(..., false) mass
+     * assignment cannot reach it.
+     *
+     * @var list<string>
+     */
+    private array $configFileKeys = [];
+
+    /** @param list<string> $keys */
+    public function setConfigFileKeys(array $keys): void
+    {
+        $this->configFileKeys = $keys;
+    }
+
+    /** @return list<string> */
+    public function getConfigFileKeys(): array
+    {
+        return $this->configFileKeys;
+    }
+
+    /**
+     * CP form display helper — never renders a raw (non-reference) value, so
+     * secrets injected from config/offsite.php stay out of the settings page HTML.
+     */
+    public function cpDisplayValue(string $attribute): string
+    {
+        return $this->envRefOrBlank((string)$this->$attribute);
+    }
+
+    /** @return array<string, mixed> only CP fields are ever serialized */
     public function fields(): array
     {
         return [
@@ -59,7 +103,27 @@ final class Settings extends Model
             'notifyOnSuccess' => 'notifyOnSuccess',
             'minFreeDiskMb' => fn(): int => (int)$this->minFreeDiskMb,
             'multipartThresholdMb' => fn(): int => (int)$this->multipartThresholdMb,
+            'endpoint' => fn(): string => $this->envRefOrBlank($this->endpoint),
+            'region' => fn(): string => $this->envRefOrBlank($this->region),
+            'bucket' => fn(): string => $this->envRefOrBlank($this->bucket),
+            'keyPrefix' => fn(): string => $this->envRefOrBlank($this->keyPrefix),
+            'accessKey' => fn(): string => $this->envRefOrBlank($this->accessKey),
+            'secretKey' => fn(): string => $this->envRefOrBlank($this->secretKey),
+            'slackWebhookUrl' => fn(): string => $this->envRefOrBlank($this->slackWebhookUrl),
+            'notifyEmail' => fn(): string => $this->envRefOrBlank($this->notifyEmail),
+            'heartbeatUrl' => fn(): string => $this->envRefOrBlank($this->heartbeatUrl),
         ];
+    }
+
+    /**
+     * Craft <= 5.8.21 persists the full toArray() when saving settings, which
+     * could otherwise leak raw values injected from config/offsite.php into
+     * project config. Validation improves user-input UX; this serialization
+     * guard is the final persistence boundary.
+     */
+    private function envRefOrBlank(string $value): string
+    {
+        return \preg_match(self::ENV_REF_PATTERN, $value) === 1 ? $value : '';
     }
 
     protected function defineRules(): array
@@ -71,6 +135,16 @@ final class Settings extends Model
             ['minFreeDiskMb', 'integer', 'min' => SettingsValidator::MIN_FREE_DISK_MB],
             ['multipartThresholdMb', 'integer', 'min' => SettingsValidator::MIN_MULTIPART_MB],
             ['notifyOnSuccess', 'boolean'],
+            [
+                self::ENV_REFERENCE_FIELDS,
+                'match',
+                'pattern' => self::ENV_REF_PATTERN,
+                'message' => '{attribute} must be an environment variable reference like $OFFSITE_SECRET_KEY (put the real value in .env), or blank.',
+                // config/offsite.php injects raw values into model attributes.
+                // Skipping those keys keeps existing config-file users able to
+                // save CP settings; the serialization guard still blocks leaks.
+                'when' => fn(self $model, string $attribute): bool => !\in_array($attribute, $model->getConfigFileKeys(), true),
+            ],
         ];
     }
 
@@ -82,6 +156,15 @@ final class Settings extends Model
             'notifyOnSuccess' => 'Notify on Success',
             'minFreeDiskMb' => 'Minimum Free Disk Space (MB)',
             'multipartThresholdMb' => 'Multipart Upload Threshold (MB)',
+            'endpoint' => 'S3 Endpoint URL',
+            'region' => 'Region',
+            'bucket' => 'Bucket',
+            'keyPrefix' => 'Key Prefix',
+            'accessKey' => 'Access Key ID',
+            'secretKey' => 'Secret Access Key',
+            'slackWebhookUrl' => 'Slack Webhook URL',
+            'notifyEmail' => 'Notification Email',
+            'heartbeatUrl' => 'Heartbeat URL',
         ];
     }
 

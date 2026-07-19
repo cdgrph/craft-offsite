@@ -14,6 +14,6 @@ Please include: affected version, reproduction steps or proof of concept, and im
 
 ## Design notes relevant to security
 
-- Credentials are read from environment variables or the AWS SDK credential chain; they are never persisted to the database or project config, and `craft offsite/diagnose` output is redacted. The settings model serializes only its five operational fields (enforced by a unit test), so control-panel settings saves can never write secrets to project config.
+- Credentials are read from environment variables or the AWS SDK credential chain; they are never persisted to the database or project config, and `craft offsite/diagnose` output is redacted. Control-panel fields for connection and notification settings accept only environment variable references (e.g. `$OFFSITE_SECRET_KEY`): raw values are rejected by validation, and the settings model additionally blanks any non-reference value at serialization time (both enforced by unit tests), so control-panel settings saves can never write secrets to project config.
 - TLS certificate verification is always on and cannot be disabled by configuration.
 - The `lifecycle` retention mode lets you run with a credential that has **no delete permission**, so a compromised web server cannot destroy existing backups.
