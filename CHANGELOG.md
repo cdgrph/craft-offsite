@@ -1,6 +1,6 @@
 # Release Notes for Offsite
 
-## Unreleased
+## 1.0.0 - 2026-07-19
 
 ### Added
 - Operational settings (retention mode, generations to keep, notify on success, minimum free disk space, multipart threshold) are now editable in the control panel.
@@ -8,6 +8,7 @@
 
 ### Changed
 - The control panel now requires the bucket setting, and the region setting when no custom endpoint is set — matching the runtime validator so an incomplete setup fails at save time instead of at the first backup run. Keys overridden in `config/offsite.php` are exempt, so a config-file override can never block saving.
+- The utility status summary now states in text when the last successful backup is overdue (older than 48 hours), including the threshold in the warning, instead of relying on the status dot color alone.
 
 ## 1.0.0-beta.1 - 2026-07-18
 
