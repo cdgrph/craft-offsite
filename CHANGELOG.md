@@ -1,5 +1,10 @@
 # Release Notes for Offsite
 
+## Unreleased
+
+### Fixed
+- `offsite/diagnose` now warns when Craft's `backupCommand` config setting is disabled (set to `false`), which makes database backups impossible. Previously diagnose reported no issues while `offsite/backup/db` failed — on some platforms (such as Craft Cloud), `backupCommand` resolves to `false` at runtime.
+
 ## 1.0.0 - 2026-07-19
 
 ### Added

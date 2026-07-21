@@ -9,6 +9,7 @@ Scheduled, generation-managed off-site database backups for Craft CMS — with i
 - `mysqldump` or `pg_dump` on the server — *the same requirement as Craft's own Database Backup utility* (Offsite delegates to Craft core's native backup)
 - The default plain-SQL backup format. Custom `backupCommandFormat` values (`custom`/`tar`/`directory`, Craft 5.2+) are not supported in v1.0
 - An S3-compatible object storage bucket
+- Craft's `backupCommand` config setting must not be disabled (`false`) — Offsite delegates database dumps to Craft's native backup
 
 ## Quick start
 
@@ -56,6 +57,10 @@ See [docs/setup.md](docs/setup.md) for all settings, provider-specific schedulin
 Offsite is a Craft *data* backup. Full disaster recovery also needs your codebase (Git), `composer.lock`, project config, and `.env` — see [docs/restore.md](docs/restore.md) for the complete recovery runbook.
 
 Offsite also assumes a **single host**. Its backup/restore/prune lock is host-local, so horizontally scaled web nodes and separate cron hosts are not supported in v1.0 — run Offsite, including its queue worker, from exactly one host. See [Locking & concurrency](docs/setup.md#locking--concurrency) for the full contract.
+
+## Craft Cloud
+
+Offsite is designed for self-hosted and traditional hosting environments. [Craft's documentation](https://craftcms.com/docs/cloud/databases.html) states that the Database Backup utility is not supported on Craft Cloud, and in practice `backupCommand` resolves to `false` there at runtime — so `offsite/backup/db` cannot create database dumps on Craft Cloud, and `offsite/diagnose` reports the condition. Use Craft Cloud's built-in nightly backups and the Backups screen in Craft Console instead.
 
 ## Supported providers
 
