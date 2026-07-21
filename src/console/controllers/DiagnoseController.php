@@ -33,6 +33,9 @@ final class DiagnoseController extends Controller
             'PHP version: ' . PHP_VERSION,
             'DB driver: ' . $db->getDriverName(),
         ];
+        if (CraftDatabaseDumper::backupCommandDisabled()) {
+            $lines[] = 'warning: backupCommand is set to false — Craft database backups are disabled, so offsite/backup/db will always fail in this environment. If your hosting platform manages database backups (e.g. Craft Cloud), use the platform\'s backups instead.';
+        }
         if ($db->getIsPgsql()) {
             $general = \Craft::$app->getConfig()->getGeneral();
             if (!property_exists($general, 'backupCommandFormat')) {

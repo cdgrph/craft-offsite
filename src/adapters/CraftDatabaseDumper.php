@@ -29,6 +29,17 @@ final class CraftDatabaseDumper implements DatabaseDumper
         return null;
     }
 
+    /**
+     * Whether Craft's backupCommand config setting disables database backups
+     * entirely. Mirrors the core stop condition exactly (`=== false`): null
+     * and Closure values still produce a dump command, false makes
+     * backupTo() throw before any dump is attempted.
+     */
+    public static function backupCommandDisabled(): bool
+    {
+        return \Craft::$app->getConfig()->getGeneral()->backupCommand === false;
+    }
+
     public function dump(string $targetDir): string
     {
         $format = self::unsupportedBackupFormat();
