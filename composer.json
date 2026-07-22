@@ -4,7 +4,7 @@
     "type": "craft-plugin",
     "license": "proprietary",
     "homepage": "https://github.com/cdgrph/craft-offsite",
-    "keywords": ["craft", "cms", "craftcms", "craft-plugin", "backup", "database", "s3", "off-site"],
+    "keywords": ["backup", "database", "s3", "restore", "database-backup", "cloudflare-r2", "backblaze-b2", "postgresql", "mysql", "off-site"],
     "authors": [
         { "name": "Codegraph", "homepage": "https://cdgrph.com" }
     ],
