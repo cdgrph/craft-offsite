@@ -103,6 +103,35 @@ Notifications alone cannot tell you that cron **stopped running**. Configure a d
 2. Set `heartbeatUrl` to the ping URL.
 3. Offsite pings the URL after every committed run, and `<url>/fail` after failures — so you get alerted both on failing backups *and* on silence.
 
+## Retries and worker death
+
+A queued backup (the control panel button) retries **once** if the worker
+process dies mid-run — a server reboot, a deploy, or the queue's 24-hour TTR
+limit. The retry targets the same run ID, so when the dead attempt had already
+committed the backup, the retry only completes the bookkeeping (notifications,
+heartbeat) instead of producing a duplicate backup. This is the main thing the
+retry buys you: an interrupted backup can never turn into two backups.
+Failures the backup itself reports (S3 errors, invalid settings, a busy lock)
+are never retried — the next scheduled run is the recovery path.
+
+**The retry is not prompt.** A dying worker leaves its job reserved, and Craft
+only re-runs a reserved job once the reservation expires — which takes as long
+as the job's TTR. Offsite sets a 24-hour TTR (a database dump must be allowed
+to take as long as it needs), so a backup interrupted by a reboot is retried up
+to a day later. The one exception is a job that hits the TTR limit itself:
+there the reservation expires at the same moment, so the retry follows
+immediately. Treat the retry as a backstop, not as recovery — **your scheduled
+cron run is what actually gets you a fresh backup the next day.** Cron runs
+(`craft offsite/backup/db`) are not queued and never retry.
+
+A dead worker cannot send a failure ping, so a heartbeat check is the only
+thing that will tell you a backup stopped happening at all. Size the grace
+period against your backup schedule, not against the retry — because the retry
+can arrive a day later, it will not clear an alert within any reasonable grace
+period. Without a heartbeat configured, a queued backup whose worker died twice
+disappears from the queue with no visible trace; this is why the heartbeat is
+strongly recommended.
+
 ## Retention
 
 ### `plugin` mode (default)

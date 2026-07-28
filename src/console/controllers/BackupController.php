@@ -30,15 +30,9 @@ final class BackupController extends Controller
 
         // Save to the local UI cache (the remote catalog is the source of truth). A
         // cache write failure never taints the exit code of a committed backup (Codex review B4)
-        try {
-            $row = new RunRow();
-            $row->runId = $record->runId;
-            $row->startedAt = date('Y-m-d H:i:s', strtotime($record->startedAt));
-            $row->backupStatus = $record->backupStatus();
-            $row->summaryJson = json_encode($record->toArray());
-            $row->save(false);
-        } catch (\Throwable $e) {
-            $this->stderr("Warning: could not save local run cache: {$e->getMessage()}\n", Console::FG_YELLOW);
+        $cacheError = RunRow::upsertFromRecord($record);
+        if ($cacheError !== null) {
+            $this->stderr("Warning: could not save local run cache: {$cacheError}\n", Console::FG_YELLOW);
         }
 
         foreach ($record->sideEffects() as $name => $result) {

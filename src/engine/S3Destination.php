@@ -251,6 +251,16 @@ final class S3Destination implements Destination
         });
     }
 
+    public function exists(string $key): bool
+    {
+        // doesObjectExistV2: 404 → false, anything else throws (S3ClientTrait.php:317).
+        // The legacy doesObjectExist() maps AccessDenied to true and most non-5xx
+        // errors to false, which would corrupt the resume decision.
+        return $this->withRetry(
+            fn() => $this->client->doesObjectExistV2($this->bucket, $this->keyPrefix . $key),
+        );
+    }
+
     /** @template T @param callable(): T $fn @return T */
     private function withRetry(callable $fn): mixed
     {

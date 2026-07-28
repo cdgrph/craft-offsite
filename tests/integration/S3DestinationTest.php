@@ -93,4 +93,16 @@ final class S3DestinationTest extends TestCase
             unlink($src);
         }
     }
+
+    public function testExistsTrueForUploadedObjectAndFalseForMissing(): void
+    {
+        $key = 'itest/exists-' . uniqid() . '.txt';
+        $this->dest->putString($key, 'x');
+        try {
+            self::assertTrue($this->dest->exists($key));
+            self::assertFalse($this->dest->exists($key . '.missing'));
+        } finally {
+            $this->dest->delete($key);
+        }
+    }
 }

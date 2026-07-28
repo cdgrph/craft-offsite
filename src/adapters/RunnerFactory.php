@@ -124,11 +124,16 @@ final class RunnerFactory
         return SiteLabel::resolve(baseUrl: $primary->getBaseUrl(), fallbackName: $primary->name);
     }
 
-    public function createContext(): RunContext
+    public static function newRunId(): string
+    {
+        return date('Ymd-His') . '-' . StringHelper::randomString(6);
+    }
+
+    public function createContext(?string $runId = null): RunContext
     {
         $info = \Craft::$app->getInfo();
         return new RunContext(
-            runId: date('Ymd-His') . '-' . StringHelper::randomString(6),
+            runId: $runId ?? self::newRunId(),
             startedAt: date(DATE_ATOM),
             siteUid: (string)$info->uid,
             craftVersion: \Craft::$app->getVersion(),

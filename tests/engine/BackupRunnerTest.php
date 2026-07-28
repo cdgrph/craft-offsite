@@ -270,4 +270,106 @@ final class BackupRunnerTest extends TestCase
         self::assertStringNotContainsString($this->workDir, (string)$this->slackHttp->calls[0]['body']);
         self::assertStringNotContainsString('lsof', (string)$this->slackHttp->calls[0]['body']);
     }
+
+    private function catalogEntry(string $runId, string $startedAt): CatalogEntry
+    {
+        return new CatalogEntry(
+            runId: $runId, startedAt: $startedAt, siteUid: 'site-1',
+            craftVersion: '5.8.0', schemaVersion: 's', pluginVersion: '1.0.0',
+            dbDriver: 'mysql', objectKey: "db/{$runId}.zip", sizeBytes: 1,
+            sha256: str_repeat('a', 64),
+        );
+    }
+
+    public function testRedeliveredAttemptResumesCommittedRunWithoutDumping(): void
+    {
+        // A predecessor attempt died after publishing run-1
+        (new RunCatalog($this->dest))->publish($this->catalogEntry('run-1', '2026-07-11T00:00:00+00:00'));
+        $dumper = new class implements DatabaseDumper {
+            public function dump(string $targetDir): string
+            {
+                throw new \RuntimeException('A resumed run must not dump again.');
+            }
+        };
+        $runner = new BackupRunner(
+            dumper: $dumper, archiver: new ArchiveBuilder(), dest: $this->dest,
+            catalog: new RunCatalog($this->dest), retention: new RetentionPolicy('plugin', 1),
+            lock: $this->lock(), clock: new FakeClock(),
+            notifiers: [new SlackNotifier($this->slackHttp, 'https://hooks.example/x')],
+            heartbeat: new HeartbeatPinger($this->hbHttp, 'https://hc-ping.com/uuid'),
+            // Insufficient free disk space: a resume owes no dump, so it must not
+            // run the preflight either
+            preflight: new PreflightChecks($this->workDir, PHP_INT_MAX, fn() => 1),
+        );
+
+        $record = $runner->run($this->ctx('run-1'));
+
+        self::assertTrue($record->isCommitted());
+        self::assertTrue($record->sideEffects()['resumed-from-catalog']['ok']);
+        // The epilogue the dead predecessor owed: heartbeat success fires
+        self::assertSame('https://hc-ping.com/uuid', $this->hbHttp->calls[0]['url']);
+        // No new archive was produced
+        self::assertArrayNotHasKey('db/run-1.zip', $this->dest->objects);
+    }
+
+    public function testResumeReportsTheCommittedBackupsOwnTimestampAndSize(): void
+    {
+        // The local run cache drives the "backups are overdue" indicator, so a resume
+        // must not date a months-old backup as if it had just been taken
+        (new RunCatalog($this->dest))->publish($this->catalogEntry('run-1', '2026-07-11T00:00:00+00:00'));
+
+        $record = $this->runner()->run($this->ctx('run-1', startedAt: '2026-07-12T09:00:00+00:00'));
+
+        self::assertSame('2026-07-11T00:00:00+00:00', $record->startedAt);
+        $details = $record->toArray()['details'];
+        self::assertSame('1 B', $details['size']);
+        // The attempt's own elapsed time describes bookkeeping, not the backup
+        self::assertArrayNotHasKey('duration', $details);
+        self::assertArrayHasKey('note', $details);
+    }
+
+    public function testResumeDoesNotApplyRetention(): void
+    {
+        // Two committed generations; keepCount=1 would delete run-0 on a normal run
+        $catalog = new RunCatalog($this->dest);
+        $catalog->publish($this->catalogEntry('run-0', '2026-07-10T00:00:00+00:00'));
+        $this->dest->objects['db/run-0.zip'] = 'x';
+        $catalog->publish($this->catalogEntry('run-1', '2026-07-11T00:00:00+00:00'));
+
+        $this->runner(keepCount: 1)->run($this->ctx('run-1'));
+
+        // Resume only confirms the commit; the excess generation stays until the
+        // next successful run applies retention
+        self::assertArrayHasKey('catalog/run-0.json', $this->dest->objects);
+        self::assertArrayHasKey('db/run-0.zip', $this->dest->objects);
+    }
+
+    public function testResumeNotifiesSuccessWhenConfigured(): void
+    {
+        (new RunCatalog($this->dest))->publish($this->catalogEntry('run-1', '2026-07-11T00:00:00+00:00'));
+        $ctx = new RunContext(
+            runId: 'run-1', startedAt: '2026-07-12T00:00:00+00:00', siteUid: 'site-1',
+            craftVersion: '5.8.0', schemaVersion: 's', pluginVersion: '1.0.0',
+            dbDriver: 'mysql', workDir: $this->workDir, notifyOnSuccess: true,
+        );
+
+        $record = $this->runner()->run($ctx);
+
+        // The resumed epilogue notifies exactly once (at-least-once overall:
+        // the dead predecessor may or may not have notified already)
+        self::assertTrue($record->sideEffects()['resumed-from-catalog']['ok'] ?? false);
+        self::assertCount(1, $this->slackHttp->calls);
+    }
+
+    public function testResumeCheckFailureFailsRunAndNotifies(): void
+    {
+        $this->dest->failOnKeySubstring = 'catalog/';
+        $record = $this->runner()->run($this->ctx('run-1'));
+
+        self::assertSame(RunRecord::FAILED, $record->backupStatus());
+        self::assertStringContainsString('Injected failure', (string)$record->failureReason());
+        // The failure still flows through finish(): notification + heartbeat /fail
+        self::assertNotEmpty($this->slackHttp->calls);
+        self::assertSame('https://hc-ping.com/uuid/fail', $this->hbHttp->calls[0]['url']);
+    }
 }

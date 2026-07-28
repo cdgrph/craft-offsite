@@ -75,4 +75,10 @@ final class FakeDestination implements Destination
         }
         return $this->objects[$key];
     }
+
+    public function exists(string $key): bool
+    {
+        $this->maybeFail($key);
+        return isset($this->objects[$key]);
+    }
 }
