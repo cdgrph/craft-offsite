@@ -4,7 +4,7 @@ declare(strict_types=1);
 namespace cdgrph\offsite\engine;
 
 /**
- * DB backup pipeline (spec §4):
+ * DB backup pipeline:
  * preflight → dump → zip+sha256 → upload (verified) → catalog publish (= the commit)
  * → retention → notify → heartbeat. Side effects never flip a committed backup.
  */
@@ -70,7 +70,7 @@ final class BackupRunner
             $tmpFiles[] = $dumpPath;
 
             $zipPath = $ctx->workDir . '/' . $ctx->runId . '.zip';
-            // Registered before the zip is created: a partially written zip is also cleaned up on failure (Codex review S12)
+            // Registered before the zip is created: a partially written zip is also cleaned up on failure
             $tmpFiles[] = $zipPath;
             $this->lock->progress('archive');
             $archive = $this->archiver->zipFile($dumpPath, $zipPath, 'backup.sql');
@@ -80,7 +80,7 @@ final class BackupRunner
             $archiveSizeBytes = $archive->sizeBytes;
             $this->dest->put($objectKey, $archive->path, $archive->sha256);
 
-            // Catalog publish is the sole evidence of commit (spec §4)
+            // Catalog publish is the sole evidence of commit
             $this->lock->progress('publish');
             $this->catalog->publish(new CatalogEntry(
                 runId: $ctx->runId,
@@ -100,7 +100,7 @@ final class BackupRunner
             $this->applyRetention($record, $ctx->siteUid);
         } catch (\Throwable $e) {
             if ($record->isCommitted()) {
-                // Unexpected exceptions after commit are recorded as side effects (committed is immutable — spec §5-1)
+                // Unexpected exceptions after commit are recorded as side effects (committed is immutable)
                 $record->recordSideEffect('post-commit', false, $e->getMessage());
             } else {
                 $record->markFailed($e->getMessage());
@@ -126,7 +126,7 @@ final class BackupRunner
     {
         try {
             // Only this site's entries participate in generation counting, so backups of
-            // other sites sharing the same bucket/prefix are never swept up (Codex review B7)
+            // other sites sharing the same bucket/prefix are never swept up
             $mine = array_values(array_filter(
                 $this->catalog->all(),
                 fn(CatalogEntry $e) => $e->siteUid === $siteUid,
@@ -134,7 +134,7 @@ final class BackupRunner
             foreach ($this->retention->selectForDeletion($mine) as $old) {
                 // Remove the catalog entry first: in the reverse order, a failed catalog
                 // delete would leave commit evidence pointing at a nonexistent object.
-                // Orphaned objects are picked up safely by prune --orphans (Codex review S10)
+                // Orphaned objects are picked up safely by prune --orphans
                 $this->catalog->remove($old->runId);
                 $this->dest->delete($old->objectKey);
             }

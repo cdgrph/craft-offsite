@@ -7,7 +7,7 @@ use cdgrph\offsite\engine\DatabaseDumper;
 
 /**
  * Delegates to Craft core's native backup (same mysqldump/pg_dump handling
- * and requirements as the CP's own Database Backup utility — spec §1).
+ * and requirements as the CP's own Database Backup utility).
  */
 final class CraftDatabaseDumper implements DatabaseDumper
 {
@@ -15,9 +15,8 @@ final class CraftDatabaseDumper implements DatabaseDumper
     {
         // Never commit anything but plain SQL (backupCommandFormat=custom/tar/directory):
         // if this went unnoticed until restore time, unrestorable backups would pile up
-        // as generations while retention deletes the older, restorable ones (Codex
-        // review R7). Reject at the settings level instead of relying on heuristics
-        // (Codex review F4)
+        // as generations while retention deletes the older, restorable ones. Reject at
+        // the settings level instead of relying on heuristics
         $general = \Craft::$app->getConfig()->getGeneral();
         $format = property_exists($general, 'backupCommandFormat') ? $general->backupCommandFormat : null;
         // backupCommandFormat is a PostgreSQL-only setting (a no-op on MySQL), so it
@@ -56,7 +55,7 @@ final class CraftDatabaseDumper implements DatabaseDumper
         }
         $head = (string)file_get_contents($path, false, null, 0, 512);
         // A pg_dump custom archive contains strings like SET inside its binary and can
-        // slip past the heuristic, so the PGDMP magic is rejected explicitly (Codex review F4)
+        // slip past the heuristic, so the PGDMP magic is rejected explicitly
         $notSql = str_starts_with($head, 'PGDMP')
             || $head === ''
             || (!str_contains($head, '--') && stripos($head, 'SET') === false && stripos($head, 'CREATE') === false);

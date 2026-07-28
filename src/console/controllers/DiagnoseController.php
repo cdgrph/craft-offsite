@@ -13,7 +13,7 @@ use craft\console\Controller;
 use yii\console\ExitCode;
 
 /**
- * Prints a redacted diagnostic bundle for support requests (spec §6).
+ * Prints a redacted diagnostic bundle for support requests.
  * NEVER prints credentials.
  */
 final class DiagnoseController extends Controller
@@ -74,7 +74,7 @@ final class DiagnoseController extends Controller
         $lines[] = 'free disk (work dir): ' . (string)disk_free_space($factory->workDir());
         array_push($lines, ...$factory->lock()->diagnostics());
         // Never talk to the network with credentials while settings are invalid
-        // (insecure endpoint etc.) — only display the diagnostics (Codex review F3)
+        // (insecure endpoint etc.) — only display the diagnostics
         if ($factory->settingsErrors() === []) {
             try {
                 $count = \count($factory->catalog()->all());

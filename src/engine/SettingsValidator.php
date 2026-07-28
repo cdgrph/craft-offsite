@@ -56,7 +56,7 @@ final class SettingsValidator
             $errors[] = 'retentionKeepCount must be >= 1.';
         }
 
-        // TLS is mandatory (spec §5-5). http is allowed only via explicit opt-in for development (Codex review B9)
+        // TLS is mandatory. http is allowed only via explicit opt-in for development
         $allowInsecure = (bool)($s['allowInsecureHttp'] ?? false);
         foreach (['heartbeatUrl', 'slackWebhookUrl', 'endpoint'] as $urlField) {
             $v = (string)($s[$urlField] ?? '');
@@ -71,7 +71,7 @@ final class SettingsValidator
         }
 
         // A one-sided credential silently falls through to the SDK chain while the
-        // operator believes explicit credentials are in use (Codex review S14)
+        // operator believes explicit credentials are in use
         if ((($s['accessKey'] ?? '') !== '') !== (($s['secretKey'] ?? '') !== '')) {
             $errors[] = 'accessKey and secretKey must be set together (leave both empty to use the SDK credential chain).';
         }

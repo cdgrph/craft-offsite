@@ -29,7 +29,7 @@ final class BackupController extends Controller
         $record = $factory->create()->run($ctx);
 
         // Save to the local UI cache (the remote catalog is the source of truth). A
-        // cache write failure never taints the exit code of a committed backup (Codex review B4)
+        // cache write failure never taints the exit code of a committed backup
         $cacheError = RunRow::upsertFromRecord($record);
         if ($cacheError !== null) {
             $this->stderr("Warning: could not save local run cache: {$cacheError}\n", Console::FG_YELLOW);

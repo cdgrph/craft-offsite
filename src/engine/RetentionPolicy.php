@@ -4,7 +4,7 @@ declare(strict_types=1);
 namespace cdgrph\offsite\engine;
 
 /**
- * Two retention modes (spec §5-3):
+ * Two retention modes:
  * - 'plugin':    the plugin deletes old generations (credential has delete rights)
  * - 'lifecycle': deletion is fully delegated to bucket lifecycle rules; plugin never deletes
  */

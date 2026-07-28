@@ -75,7 +75,7 @@ final class S3DestinationTest extends TestCase
 
     public function testInvalidCredentialsFailAsDestinationException(): void
     {
-        // Fault injection for the "revoked credentials" acceptance criterion (spec §7)
+        // Fault injection for the "revoked credentials" acceptance criterion
         $badClient = new S3Client([
             'version' => 'latest',
             'region' => 'us-east-1',

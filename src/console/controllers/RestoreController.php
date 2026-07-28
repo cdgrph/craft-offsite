@@ -22,7 +22,7 @@ final class RestoreController extends Controller
     }
 
     /**
-     * Restores a database backup. DRY-RUN by default (spec §5-2).
+     * Restores a database backup. DRY-RUN by default.
      * Guards: catalog integrity chain → site/version preflight → maintenance
      * mode + queue check → pre-restore local dump → import → post checks.
      */
@@ -56,7 +56,7 @@ final class RestoreController extends Controller
             return ExitCode::OK;
         }
         // A driver mismatch is rejected even with --force: piping a mysql dump into
-        // pgsql (etc.) can leave the target database partially imported or unusable (Codex review B6)
+        // pgsql (etc.) can leave the target database partially imported or unusable
         if (!$checks['DB driver matches']) {
             $this->stderr("DB driver mismatch (backup: {$entry->dbDriver}, this environment: " . \Craft::$app->getDb()->getDriverName() . ") cannot be overridden.\n", Console::FG_RED);
             return ExitCode::UNSPECIFIED_ERROR;
@@ -74,7 +74,7 @@ final class RestoreController extends Controller
         }
         // The maintenance flag lives inside the DB and is briefly overwritten during
         // import, so external traffic blocking is a hard requirement for integrity
-        // (Codex review G1, docs/restore.md)
+        // (see docs/restore.md)
         $this->stdout("REQUIRED: block external traffic at the web-server/load-balancer level before proceeding — the DB-based maintenance flag is briefly overwritten during import.\n", Console::FG_YELLOW);
         if (!$this->force && !$this->confirm("Restore run {$runId} over the CURRENT database?")) {
             return ExitCode::OK;
@@ -82,7 +82,7 @@ final class RestoreController extends Controller
 
         $lock = $factory->lock();
         // Use a process-specific suffix so lock diagnostics distinguish concurrent
-        // restore attempts for the same runId (Codex review B2)
+        // restore attempts for the same runId
         $owner = 'restore:' . $runId . ':' . bin2hex(random_bytes(4));
         try {
             $lock->acquire($owner);
@@ -97,7 +97,7 @@ final class RestoreController extends Controller
         $sqlPath = $work . "/restore-{$runId}.sql";
 
         try {
-            // 1. Download + integrity chain (destructive steps only after every check passes — spec §4)
+            // 1. Download + integrity chain (destructive steps only after every check passes)
             $lock->progress('download');
             $this->stdout("Downloading {$entry->objectKey}...\n");
             $factory->destination()->getToFile($entry->objectKey, $zipPath);
@@ -108,7 +108,7 @@ final class RestoreController extends Controller
             if ($zip->open($zipPath, \ZipArchive::CHECKCONS) !== true) {
                 throw new \RuntimeException('Zip CRC check failed — refusing to restore.');
             }
-            // Path traversal guard: only the fixed entry name 'backup.sql' is accepted (spec §5-5)
+            // Path traversal guard: only the fixed entry name 'backup.sql' is accepted
             if ($zip->locateName('backup.sql') === false) {
                 throw new \RuntimeException('Archive does not contain backup.sql.');
             }
@@ -119,9 +119,9 @@ final class RestoreController extends Controller
                 throw new \RuntimeException('SQL sanity check failed — file does not look like a SQL dump.');
             }
 
-            // 2. Maintenance mode ON (required by spec §5-2). If the operator had already
-            // enabled it we don't own the flag — record it as the state to restore
-            // after import (Codex review B5/F1)
+            // 2. Maintenance mode ON (mandatory before any destructive step). If the
+            // operator had already enabled it we don't own the flag — record it as
+            // the state to restore after import
             $wasAlreadyInMaintenance = (bool)\Craft::$app->getInfo()->maintenance;
             if (!$wasAlreadyInMaintenance) {
                 if (!\Craft::$app->enableMaintenanceMode()) {
@@ -143,7 +143,7 @@ final class RestoreController extends Controller
                 \Craft::$app->getDb()->restore($sqlPath);
                 // The import overwrites info.maintenance with the backup-time value —
                 // switch it back ON immediately to minimize the exposure window. The only
-                // complete guarantee is web-level blocking (made mandatory above) (Codex review G1)
+                // complete guarantee is web-level blocking (made mandatory above)
                 \craft\helpers\Db::update(Table::INFO, ['maintenance' => true], ['id' => 1]);
             } catch (\Throwable $e) {
                 $this->stderr("Restore failed: {$e->getMessage()}\nRolling back from {$rollback}...\n", Console::FG_RED);
@@ -151,7 +151,7 @@ final class RestoreController extends Controller
                     \Craft::$app->getDb()->restore($rollback);
                 } catch (\Throwable $rollbackError) {
                     // Never expose a partially imported DB: if even the rollback fails,
-                    // keep maintenance mode on and defer to the operator (Codex review B5)
+                    // keep maintenance mode on and defer to the operator
                     $keepMaintenance = true;
                     $this->stderr(
                         "CRITICAL: rollback also failed ({$rollbackError->getMessage()}). The database may be in a partial state. Maintenance mode is kept ON — restore manually from {$rollback}.\n",
@@ -166,7 +166,7 @@ final class RestoreController extends Controller
                 $lock->progress('post-check');
                 \Craft::$app->getCache()->flush();
                 \Craft::$app->getDb()->getSchema()->refresh();
-                // Migration/schema consistency check (spec §5-2). Craft::$app->getInfo()
+                // Migration/schema consistency check. Craft::$app->getInfo()
                 // returns the in-process cache (the pre-restore Info), so read the DB directly
                 $restoredSchema = (string)(new \craft\db\Query())
                     ->select('schemaVersion')->from(Table::INFO)->where(['id' => 1])->scalar();
@@ -176,7 +176,7 @@ final class RestoreController extends Controller
                 // The import overwrote the maintenance flag with the backup-time value, so
                 // restore the prior state via a direct DB update. disableMaintenanceMode()
                 // is not used: it would write the pre-restore version/schemaVersion back
-                // through the cached Info (Codex review R1/F1)
+                // through the cached Info
                 \craft\helpers\Db::update(Table::INFO, ['maintenance' => $wasAlreadyInMaintenance], ['id' => 1]);
                 $maintenanceEnabled = false;
             } catch (\Throwable $e) {
@@ -187,13 +187,13 @@ final class RestoreController extends Controller
             $this->stdout("Post-restore checks passed. Pre-restore dump kept at {$rollback}.\n", Console::FG_GREEN);
             return ExitCode::OK;
         } finally {
-            // Never leave raw SQL / zip behind, even on failure (Codex review S12). The
-            // rollback point (pre-restore dump) is kept intentionally
+            // Never leave raw SQL / zip behind, even on failure. The rollback point
+            // (pre-restore dump) is kept intentionally
             @unlink($zipPath);
             @unlink($sqlPath);
             if ($keepMaintenance) {
                 // The imported DB carries the backup-time flag value (usually false) —
-                // since we declare maintenance "kept ON", force it ON in the DB too (Codex review F1)
+                // since we declare maintenance "kept ON", force it ON in the DB too
                 try {
                     \craft\helpers\Db::update(Table::INFO, ['maintenance' => true], ['id' => 1]);
                 } catch (\Throwable) {
