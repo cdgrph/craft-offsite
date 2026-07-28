@@ -36,6 +36,11 @@ final class RunCatalog
         return CatalogEntry::fromArray(json_decode($this->dest->getString($this->keyFor($runId)), true));
     }
 
+    public function has(string $runId): bool
+    {
+        return $this->dest->exists($this->keyFor($runId));
+    }
+
     public function remove(string $runId): void
     {
         $this->dest->delete($this->keyFor($runId));

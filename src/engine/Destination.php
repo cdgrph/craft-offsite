@@ -18,4 +18,11 @@ interface Destination
     public function putString(string $key, string $contents): void;
 
     public function getString(string $key): string;
+
+    /**
+     * True when the key exists. A missing key (404) returns false; any other
+     * failure throws — an error must never be read as absence (spec: the
+     * commit-aware resume check would otherwise re-run a committed backup).
+     */
+    public function exists(string $key): bool;
 }

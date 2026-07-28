@@ -66,4 +66,25 @@ final class RunCatalogTest extends TestCase
         $catalog->remove('run-1');
         self::assertSame([], $catalog->all());
     }
+
+    public function testHasReturnsTrueForPublishedRun(): void
+    {
+        $dest = new FakeDestination();
+        $catalog = new RunCatalog($dest);
+        $catalog->publish($this->entry('run-1', '2026-07-01T00:00:00+00:00'));
+        self::assertTrue($catalog->has('run-1'));
+    }
+
+    public function testHasReturnsFalseForUnknownRun(): void
+    {
+        self::assertFalse((new RunCatalog(new FakeDestination()))->has('nope'));
+    }
+
+    public function testHasPropagatesDestinationFailure(): void
+    {
+        $dest = new FakeDestination();
+        $dest->failOnKeySubstring = 'catalog/';
+        $this->expectException(DestinationException::class);
+        (new RunCatalog($dest))->has('run-1');
+    }
 }
