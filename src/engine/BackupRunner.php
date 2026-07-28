@@ -44,11 +44,18 @@ final class BackupRunner
             // Commit-aware resume for redelivered attempts (fixed runId): the
             // predecessor died after catalog publish, so the backup is committed
             // and only the epilogue (notify/heartbeat/cache) is owed. Checked
-            // under the lock — publish only ever happens while holding it, so a
-            // concurrent holder's publish cannot slip in after this check and
-            // diverge catalog from object. A check failure falls through to the
-            // shared catch, so failure notifications still fire.
+            // while holding the lock, which a publish also requires, so the
+            // catalog cannot change under this run once the check has passed.
+            // A check failure falls through to the shared catch, so failure
+            // notifications still fire.
             if ($this->catalog->has($ctx->runId)) {
+                // Report the committed backup's own timestamp and size rather than
+                // this attempt's. The local run cache drives the "backups are
+                // overdue" indicator, so dating a resume as if it were a fresh dump
+                // would hide a stale backup for as long as redelivery took.
+                $entry = $this->catalog->get($ctx->runId);
+                $record = new RunRecord($ctx->runId, $entry->startedAt);
+                $archiveSizeBytes = $entry->sizeBytes;
                 $record->markUploading();
                 $record->markCommitted();
                 $record->recordSideEffect('resumed-from-catalog', true);
@@ -147,6 +154,14 @@ final class BackupRunner
         $details['status'] = $record->backupStatus();
         if ($sizeBytes !== null) {
             $details['size'] = self::formatBytes($sizeBytes);
+        }
+        if (isset($record->sideEffects()['resumed-from-catalog'])) {
+            // This attempt only finished the bookkeeping an earlier attempt owed, so
+            // its elapsed time says nothing about how long the backup took. Report
+            // the resume instead, otherwise a seconds-long "duration" next to a full
+            // backup size reads as a wildly fast run.
+            $details['note'] = 'Resumed a backup an earlier attempt had already committed';
+            return $details;
         }
         $elapsed = (new \DateTimeImmutable())->getTimestamp()
                  - (new \DateTimeImmutable($ctx->startedAt))->getTimestamp();

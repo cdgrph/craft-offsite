@@ -107,23 +107,30 @@ Notifications alone cannot tell you that cron **stopped running**. Configure a d
 
 A queued backup (the control panel button) retries **once** if the worker
 process dies mid-run — a server reboot, a deploy, or the queue's 24-hour TTR
-limit. The retry targets the same run ID: when the previous attempt had
-already committed the backup, the retry only completes the bookkeeping
-(notifications, heartbeat) instead of producing a duplicate backup. Failures
-the backup itself reports (S3 errors, invalid settings, a busy lock) are
-never retried — the next scheduled run is the recovery path.
+limit. The retry targets the same run ID, so when the dead attempt had already
+committed the backup, the retry only completes the bookkeeping (notifications,
+heartbeat) instead of producing a duplicate backup. This is the main thing the
+retry buys you: an interrupted backup can never turn into two backups.
+Failures the backup itself reports (S3 errors, invalid settings, a busy lock)
+are never retried — the next scheduled run is the recovery path.
 
-The TTR limit is enforced in two shapes, and both count against the same
-single retry: the queue re-delivers a job whose reservation expired (the
-worker died silently), and a queue worker running in isolated mode terminates
-the job's process at the limit. Cron runs (`craft offsite/backup/db`) are not
-queued and never retry; the next scheduled run covers them.
+**The retry is not prompt.** A dying worker leaves its job reserved, and Craft
+only re-runs a reserved job once the reservation expires — which takes as long
+as the job's TTR. Offsite sets a 24-hour TTR (a database dump must be allowed
+to take as long as it needs), so a backup interrupted by a reboot is retried up
+to a day later. The one exception is a job that hits the TTR limit itself:
+there the reservation expires at the same moment, so the retry follows
+immediately. Treat the retry as a backstop, not as recovery — **your scheduled
+cron run is what actually gets you a fresh backup the next day.** Cron runs
+(`craft offsite/backup/db`) are not queued and never retry.
 
-A dead worker cannot send a failure ping, so set your heartbeat check's grace
-period to at least your backup interval. If the retry succeeds within the
-grace period, the alert resolves itself. Without a heartbeat configured, a
-queued backup whose worker died twice can disappear from the queue with no
-visible trace — this is why the heartbeat is strongly recommended.
+A dead worker cannot send a failure ping, so a heartbeat check is the only
+thing that will tell you a backup stopped happening at all. Size the grace
+period against your backup schedule, not against the retry — because the retry
+can arrive a day later, it will not clear an alert within any reasonable grace
+period. Without a heartbeat configured, a queued backup whose worker died twice
+disappears from the queue with no visible trace; this is why the heartbeat is
+strongly recommended.
 
 ## Retention
 

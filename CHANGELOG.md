@@ -3,11 +3,11 @@
 ## Unreleased
 
 ### Added
-- Queued backups now retry once after a worker death (server reboot, deploy, queue TTR kill). The retry resumes the same run: an already-committed backup is finished (notifications, heartbeat) instead of duplicated.
+- A queued backup that is interrupted by a worker death (server reboot, deploy, queue TTR kill) can no longer turn into two backups. The job now carries a fixed run ID, and a re-delivered attempt whose backup was already committed just finishes the bookkeeping (notifications, heartbeat) instead of taking a second backup. Such a job is retried once; note that Craft only re-delivers it after its reservation expires, which takes up to the 24-hour TTR, so the next scheduled run usually gets there first.
 
 ### Changed
 - The queue TTR (24 hours) is now declared by the backup job itself.
-- The local run cache never demotes a committed run when a redelivered attempt fails afterwards.
+- The local run cache never demotes a committed run when a re-delivered attempt fails afterwards, and a resumed run is now recorded under the original backup's timestamp and size instead of the retry's.
 
 ## 1.0.1 - 2026-07-22
 

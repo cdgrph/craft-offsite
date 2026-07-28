@@ -5,6 +5,7 @@ namespace cdgrph\offsite\records;
 
 use cdgrph\offsite\engine\RunRecord;
 use craft\db\ActiveRecord;
+use yii\db\IntegrityException;
 
 /**
  * Local run cache — UI display only. The remote RunCatalog is the source of truth.
@@ -36,14 +37,19 @@ final class RunRow extends ActiveRecord
     {
         try {
             return self::tryUpsert($record);
-        } catch (\Throwable) {
-            // Likely a unique-violation race with a concurrent attempt: the row
-            // now exists, so reload and re-apply the monotonic rule once.
+        } catch (IntegrityException $e) {
+            // A concurrent attempt won the insert race on the unique runId column,
+            // so the row exists now: reload it and re-apply the monotonic rule.
+            // Only this one failure is worth a second attempt — anything else
+            // (a lost connection, a schema mismatch) would fail the same way twice
+            // and its message would replace the one that explains the cause.
             try {
                 return self::tryUpsert($record);
             } catch (\Throwable $retry) {
                 return $retry->getMessage();
             }
+        } catch (\Throwable $e) {
+            return $e->getMessage();
         }
     }
 
@@ -57,7 +63,8 @@ final class RunRow extends ActiveRecord
         $row->startedAt = date('Y-m-d H:i:s', strtotime($record->startedAt));
         $row->backupStatus = $record->backupStatus();
         $row->summaryJson = json_encode($record->toArray());
-        $row->save(false);
-        return null;
+        // save() returns false without throwing when a handler vetoes the write,
+        // which would otherwise be reported to the caller as a successful cache write
+        return $row->save(false) ? null : 'the run cache row was rejected on save';
     }
 }

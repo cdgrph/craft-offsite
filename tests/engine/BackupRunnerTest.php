@@ -297,7 +297,9 @@ final class BackupRunnerTest extends TestCase
             lock: $this->lock(), clock: new FakeClock(),
             notifiers: [new SlackNotifier($this->slackHttp, 'https://hooks.example/x')],
             heartbeat: new HeartbeatPinger($this->hbHttp, 'https://hc-ping.com/uuid'),
-            preflight: new PreflightChecks($this->workDir, 1, fn() => PHP_INT_MAX),
+            // Insufficient free disk space: a resume owes no dump, so it must not
+            // run the preflight either
+            preflight: new PreflightChecks($this->workDir, PHP_INT_MAX, fn() => 1),
         );
 
         $record = $runner->run($this->ctx('run-1'));
@@ -308,6 +310,22 @@ final class BackupRunnerTest extends TestCase
         self::assertSame('https://hc-ping.com/uuid', $this->hbHttp->calls[0]['url']);
         // No new archive was produced
         self::assertArrayNotHasKey('db/run-1.zip', $this->dest->objects);
+    }
+
+    public function testResumeReportsTheCommittedBackupsOwnTimestampAndSize(): void
+    {
+        // The local run cache drives the "backups are overdue" indicator, so a resume
+        // must not date a months-old backup as if it had just been taken
+        (new RunCatalog($this->dest))->publish($this->catalogEntry('run-1', '2026-07-11T00:00:00+00:00'));
+
+        $record = $this->runner()->run($this->ctx('run-1', startedAt: '2026-07-12T09:00:00+00:00'));
+
+        self::assertSame('2026-07-11T00:00:00+00:00', $record->startedAt);
+        $details = $record->toArray()['details'];
+        self::assertSame('1 B', $details['size']);
+        // The attempt's own elapsed time describes bookkeeping, not the backup
+        self::assertArrayNotHasKey('duration', $details);
+        self::assertArrayHasKey('note', $details);
     }
 
     public function testResumeDoesNotApplyRetention(): void

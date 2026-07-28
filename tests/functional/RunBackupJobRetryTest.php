@@ -53,10 +53,24 @@ final class RunBackupJobRetryTest extends TestCase
 
     public function testLegacyPayloadWithoutRunIdNeverRetries(): void
     {
-        // A job serialized before the runId property existed (pre-upgrade queue rows)
-        $legacy = unserialize('O:32:"cdgrph\offsite\jobs\RunBackupJob":0:{}');
-        self::assertInstanceOf(RunBackupJob::class, $legacy);
+        $legacy = self::legacyPayload();
         self::assertSame('', $legacy->runId);
         self::assertFalse($legacy->canRetry(1, null));
+    }
+
+    public function testLegacyPayloadNeverRetriesProcessDeathEither(): void
+    {
+        // Without a fixed runId a retry would take a second backup under a new id,
+        // which is the duplicate this contract exists to prevent
+        self::assertFalse(self::legacyPayload()->canRetry(1, new ProcessRuntimeException('killed')));
+    }
+
+    /** A job serialized before the runId property existed (pre-upgrade queue rows). */
+    private static function legacyPayload(): RunBackupJob
+    {
+        $class = RunBackupJob::class;
+        $job = unserialize(sprintf('O:%d:"%s":0:{}', \strlen($class), $class));
+        self::assertInstanceOf(RunBackupJob::class, $job);
+        return $job;
     }
 }

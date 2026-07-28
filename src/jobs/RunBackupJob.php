@@ -29,8 +29,9 @@ final class RunBackupJob extends BaseJob implements RetryableJobInterface
         $record = $factory->create()->run(
             $factory->createContext($this->runId !== '' ? $this->runId : null),
         );
-        // A cache write failure never retries a committed job — a retry would create a
-        // duplicate backup under a different runId (Codex review B4)
+        // The cache is a display convenience; the remote catalog is the source of
+        // truth. Never fail a committed job over it — that would report a successful
+        // backup as failed in the control panel and to the notification channels.
         $cacheError = RunRow::upsertFromRecord($record);
         if ($cacheError !== null) {
             \Craft::warning("Offsite: could not save local run cache: {$cacheError}", __METHOD__);
@@ -50,15 +51,25 @@ final class RunBackupJob extends BaseJob implements RetryableJobInterface
 
     public function canRetry($attempt, $error): bool
     {
+        // One death-retry budget. The queue asks twice per delivery with different
+        // bases — before running a redelivered message it passes $attempt - 1, and
+        // after a failure it passes the current $attempt — so this bound lets the
+        // job body run at most twice on either path. An empty runId means a payload
+        // queued before the runId property existed: retrying it would run a second
+        // backup under a new id, which is exactly what the fixed runId prevents.
         if ($attempt >= 2 || $this->runId === '') {
-            return false; // one death-retry budget; legacy payloads never retry
+            return false;
         }
-        // Process death arrives in exactly two shapes (yii2-queue cli/Command.php:198):
-        //   - null: redelivery of an expired reservation (whole-worker death)
-        //   - Symfony Process exception: isolate-mode infra failure (TTR timeout,
-        //     child killed) reported by the parent worker
-        // The job's own exceptions are classified inside the isolate child and
-        // reach this method as non-Process throwables — those never retry.
+        // Only the process dying is worth another attempt, and it reaches us in two
+        // shapes:
+        //   - null: a reservation expired without the worker reporting anything,
+        //     i.e. the whole worker died (a reboot or a deploy).
+        //   - a Symfony Process exception: a queue worker in isolated mode could not
+        //     get a clean result out of the job's child process — it hit the TTR
+        //     limit, was killed, or died on a fatal error.
+        // A failure the backup itself reports is a plain throwable and never
+        // retries: the child classifies it and exits normally, and a worker running
+        // without isolation raises it directly.
         return $error === null || $error instanceof ProcessExceptionInterface;
     }
 
