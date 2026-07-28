@@ -1,5 +1,14 @@
 # Release Notes for Offsite
 
+## Unreleased
+
+### Added
+- Queued backups now retry once after a worker death (server reboot, deploy, queue TTR kill). The retry resumes the same run: an already-committed backup is finished (notifications, heartbeat) instead of duplicated.
+
+### Changed
+- The queue TTR (24 hours) is now declared by the backup job itself.
+- The local run cache never demotes a committed run when a redelivered attempt fails afterwards.
+
 ## 1.0.1 - 2026-07-22
 
 ### Fixed

@@ -103,6 +103,28 @@ Notifications alone cannot tell you that cron **stopped running**. Configure a d
 2. Set `heartbeatUrl` to the ping URL.
 3. Offsite pings the URL after every committed run, and `<url>/fail` after failures — so you get alerted both on failing backups *and* on silence.
 
+## Retries and worker death
+
+A queued backup (the control panel button) retries **once** if the worker
+process dies mid-run — a server reboot, a deploy, or the queue's 24-hour TTR
+limit. The retry targets the same run ID: when the previous attempt had
+already committed the backup, the retry only completes the bookkeeping
+(notifications, heartbeat) instead of producing a duplicate backup. Failures
+the backup itself reports (S3 errors, invalid settings, a busy lock) are
+never retried — the next scheduled run is the recovery path.
+
+The TTR limit is enforced in two shapes, and both count against the same
+single retry: the queue re-delivers a job whose reservation expired (the
+worker died silently), and a queue worker running in isolated mode terminates
+the job's process at the limit. Cron runs (`craft offsite/backup/db`) are not
+queued and never retry; the next scheduled run covers them.
+
+A dead worker cannot send a failure ping, so set your heartbeat check's grace
+period to at least your backup interval. If the retry succeeds within the
+grace period, the alert resolves itself. Without a heartbeat configured, a
+queued backup whose worker died twice can disappear from the queue with no
+visible trace — this is why the heartbeat is strongly recommended.
+
 ## Retention
 
 ### `plugin` mode (default)
