@@ -41,6 +41,20 @@ final class BackupRunner
         }
 
         try {
+            // Commit-aware resume for redelivered attempts (fixed runId): the
+            // predecessor died after catalog publish, so the backup is committed
+            // and only the epilogue (notify/heartbeat/cache) is owed. Checked
+            // under the lock — publish only ever happens while holding it, so a
+            // concurrent holder's publish cannot slip in after this check and
+            // diverge catalog from object. A check failure falls through to the
+            // shared catch, so failure notifications still fire.
+            if ($this->catalog->has($ctx->runId)) {
+                $record->markUploading();
+                $record->markCommitted();
+                $record->recordSideEffect('resumed-from-catalog', true);
+                return $record;
+            }
+
             $this->preflight->run();
             $record->markUploading();
 
