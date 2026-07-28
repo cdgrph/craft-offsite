@@ -17,8 +17,8 @@ use PHPUnit\Framework\TestCase;
  * top of file config — a stray value would contaminate every case.
  *
  * Covers the helper's decision logic only. The diagnose wiring (message,
- * position, exit code) is verified via the CLI smoke run and the Cloud
- * sandbox check described in the design doc.
+ * position, exit code) is verified by running the command against a real
+ * install, which this suite has no database for.
  */
 final class BackupCommandDisabledTest extends TestCase
 {

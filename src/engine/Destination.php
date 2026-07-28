@@ -5,7 +5,7 @@ namespace cdgrph\offsite\engine;
 
 interface Destination
 {
-    /** Upload with integrity verification (spec §4). Throws DestinationException on any failure. */
+    /** Upload with integrity verification. Throws DestinationException on any failure. */
     public function put(string $key, string $localPath, string $sha256): void;
 
     public function getToFile(string $key, string $localPath): void;
@@ -20,9 +20,9 @@ interface Destination
     public function getString(string $key): string;
 
     /**
-     * True when the key exists. A missing key (404) returns false; any other
-     * failure throws — an error must never be read as absence (spec: the
-     * commit-aware resume check would otherwise re-run a committed backup).
+     * True when the key exists. A missing key (404) returns false; any other failure
+     * throws — an error must never be read as absence, or the commit-aware resume
+     * check would take a committed backup for a missing one and run it again.
      */
     public function exists(string $key): bool;
 }

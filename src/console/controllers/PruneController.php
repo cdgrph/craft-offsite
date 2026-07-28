@@ -49,7 +49,7 @@ final class PruneController extends Controller
         /** @var \cdgrph\offsite\models\Settings $s */
         $s = \cdgrph\offsite\Plugin::getInstance()->getSettings();
         // The lifecycle-mode contract is "the plugin never deletes" — --orphans is no
-        // exception (Codex review S15). Deletion is fully delegated to bucket lifecycle rules
+        // exception. Deletion is fully delegated to bucket lifecycle rules
         if ($s->retentionMode === RetentionPolicy::MODE_LIFECYCLE) {
             $this->stderr("Retention mode is 'lifecycle': the plugin never deletes objects. Configure bucket lifecycle rules instead.\n", Console::FG_RED);
             return ExitCode::UNSPECIFIED_ERROR;
@@ -75,8 +75,7 @@ final class PruneController extends Controller
             $dest = $factory->destination();
             $siteUid = (string)\Craft::$app->getInfo()->uid;
             $policy = new RetentionPolicy($s->retentionMode, (int)$s->retentionKeepCount);
-            // Never sweep up other sites' generations (Codex review B7). Delete the
-            // catalog entry first (Codex review S10)
+            // Never sweep up other sites' generations. Delete the catalog entry first
             $mine = array_values(array_filter($catalog->all(), fn($e) => $e->siteUid === $siteUid));
             foreach ($policy->selectForDeletion($mine) as $old) {
                 $this->stdout("Deleting {$old->runId} ({$old->objectKey})\n");

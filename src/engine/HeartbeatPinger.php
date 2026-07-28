@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 namespace cdgrph\offsite\engine;
 
-/** Dead-man's-switch ping, healthchecks.io compatible (spec §1). */
+/** Dead-man's-switch ping, healthchecks.io compatible. */
 final class HeartbeatPinger
 {
     private readonly string $baseUrl;

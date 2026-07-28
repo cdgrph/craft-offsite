@@ -4,8 +4,8 @@ declare(strict_types=1);
 namespace cdgrph\offsite\engine;
 
 /**
- * Remote commit catalog — the single source of truth for what is backed up
- * (spec §4). list/restore read this catalog, never the local DB cache.
+ * Remote commit catalog — the single source of truth for what is backed up.
+ * list/restore read this catalog, never the local DB cache.
  */
 final class RunCatalog
 {

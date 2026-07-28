@@ -6,7 +6,7 @@ namespace cdgrph\offsite\engine;
 /**
  * Phase-status run record. Backup status is a strict state machine;
  * side effects (retention, notifications, heartbeat) are independent
- * and can never flip a committed backup (spec §5-1).
+ * and can never flip a committed backup.
  */
 final class RunRecord
 {

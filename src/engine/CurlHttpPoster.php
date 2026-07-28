@@ -25,7 +25,7 @@ final class CurlHttpPoster implements HttpPoster
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_TIMEOUT => $this->timeoutSeconds,
-            CURLOPT_SSL_VERIFYPEER => true, // TLS verification is mandatory (spec §5-5). No opt-out is provided
+            CURLOPT_SSL_VERIFYPEER => true, // TLS verification is mandatory. No opt-out is provided
             CURLOPT_SSL_VERIFYHOST => 2,
         ]);
         if ($jsonBody !== null) {
@@ -38,7 +38,7 @@ final class CurlHttpPoster implements HttpPoster
         curl_close($ch);
         // Slack webhook / heartbeat URLs carry a secret in the path, so exceptions
         // include the host only. This message is persisted to the DB via
-        // sideEffects → summaryJson (Codex review B3)
+        // sideEffects → summaryJson
         $host = parse_url($url, PHP_URL_HOST) ?: '(unknown host)';
         if ($result === false) {
             throw new \RuntimeException("HTTP transport error contacting {$host}: {$err}");

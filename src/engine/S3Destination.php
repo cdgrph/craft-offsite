@@ -8,7 +8,7 @@ use Aws\S3\MultipartUploader;
 use Aws\S3\S3Client;
 
 /**
- * S3-compatible destination. Integrity contract (spec §4, Codex r3):
+ * S3-compatible destination. Integrity contract:
  * multipart ETag is used only as an existence/identity signal, never as
  * an integrity proof. We request provider-native SHA-256 checksums; when
  * the provider does not return one, we do a full read-back SHA-256 BEFORE
@@ -68,7 +68,7 @@ final class S3Destination implements Destination
             try {
                 $uploader->upload();
             } catch (\Throwable $e) {
-                // Explicitly abort the partial upload (spec §4)
+                // Explicitly abort the partial upload
                 try {
                     $state = method_exists($uploader, 'getState') ? $uploader->getState() : null;
                     $uploadId = $state?->getId()['UploadId'] ?? null;
@@ -137,7 +137,7 @@ final class S3Destination implements Destination
      */
     private function verifyUploaded(string $fullKey, string $localPath, string $expectedSha256Hex, int $expectedSize): void
     {
-        // Don't fail an already-uploaded run on a transient HEAD failure (partial fix for Codex review B8)
+        // Don't fail an already-uploaded run on a transient HEAD failure
         $head = $this->withRetry(function () use ($fullKey): \Aws\ResultInterface {
             $params = ['Bucket' => $this->bucket, 'Key' => $fullKey];
             if ($this->checksumApiSupported) {
@@ -170,9 +170,9 @@ final class S3Destination implements Destination
             return;
         }
 
-        // Fallback: full read-back SHA-256 (always performed before catalog publish — spec §4 r3 fix).
+        // Fallback: full read-back SHA-256 (always performed before catalog publish).
         // Prefer the work dir whose capacity the preflight has verified, so we don't
-        // exhaust /tmp on a different filesystem (Codex review S13)
+        // exhaust /tmp on a different filesystem
         $tmp = tempnam($this->verifyTmpDir ?? sys_get_temp_dir(), 'offsite-verify');
         try {
             $this->getToFile(substr($fullKey, \strlen($this->keyPrefix)), $tmp);

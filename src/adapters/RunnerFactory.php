@@ -54,7 +54,7 @@ final class RunnerFactory
             $config['endpoint'] = $this->s['endpoint'];
             $config['use_path_style_endpoint'] = true;
         }
-        // Without explicit credentials, use the SDK default provider chain (instance profile etc.) — spec §3
+        // Without explicit credentials, use the SDK default provider chain (instance profile etc.)
         if ($this->s['accessKey'] !== '' && $this->s['secretKey'] !== '') {
             $config['credentials'] = ['key' => $this->s['accessKey'], 'secret' => $this->s['secretKey']];
         }
