@@ -26,8 +26,16 @@ final class RunBackupJob extends BaseJob implements RetryableJobInterface
         if ($factory->settingsErrors() !== []) {
             throw new \RuntimeException('Offsite settings invalid: ' . implode('; ', $factory->settingsErrors()));
         }
+        $progressCallback = new QueueProgressCallback(
+            update: fn(float $progress, string $label) => $this->setProgress($queue, $progress, $label),
+            warning: static fn(\Throwable $e) => \Craft::warning(
+                "Offsite: could not update queue progress: {$e->getMessage()}",
+                __METHOD__,
+            ),
+        );
         $record = $factory->create()->run(
             $factory->createContext($this->runId !== '' ? $this->runId : null),
+            \Closure::fromCallable($progressCallback),
         );
         // The cache is a display convenience; the remote catalog is the source of
         // truth. Never fail a committed job over it — that would report a successful

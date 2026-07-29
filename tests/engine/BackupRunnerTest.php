@@ -92,6 +92,60 @@ final class BackupRunnerTest extends TestCase
         self::assertSame([], glob($this->workDir . '/*.zip') ?: []);
     }
 
+    public function testReportsBackupProgressAtPhaseBoundaries(): void
+    {
+        $updates = [];
+
+        $record = $this->runner()->run(
+            $this->ctx('run-1'),
+            static function(float $progress, string $label) use (&$updates): void {
+                $updates[] = [$progress, $label];
+            },
+        );
+
+        self::assertTrue($record->isCommitted());
+        self::assertSame([
+            [0.10, 'Dumping database'],
+            [0.35, 'Creating archive'],
+            [0.55, 'Uploading backup'],
+            [0.85, 'Publishing backup'],
+            [0.95, 'Applying retention'],
+        ], $updates);
+    }
+
+    public function testDoesNotReportPhasesAfterDumpFailure(): void
+    {
+        $this->dumper->fail = true;
+        $updates = [];
+
+        $record = $this->runner()->run(
+            $this->ctx('run-1'),
+            static function(float $progress, string $label) use (&$updates): void {
+                $updates[] = [$progress, $label];
+            },
+        );
+
+        self::assertSame(RunRecord::FAILED, $record->backupStatus());
+        self::assertSame([[0.10, 'Dumping database']], $updates);
+    }
+
+    public function testProgressCallbackFailureDoesNotFailBackup(): void
+    {
+        $calls = 0;
+
+        $record = $this->runner()->run(
+            $this->ctx('run-1'),
+            static function(float $progress, string $label) use (&$calls): void {
+                $calls++;
+                throw new \RuntimeException('Progress display unavailable.');
+            },
+        );
+
+        self::assertTrue($record->isCommitted());
+        self::assertSame(5, $calls);
+        self::assertArrayHasKey('catalog/run-1.json', $this->dest->objects);
+    }
+
     public function testUploadFailureMarksFailedNotifiesAndPingsFail(): void
     {
         $this->dest->failOnKeySubstring = 'db/';
@@ -310,6 +364,24 @@ final class BackupRunnerTest extends TestCase
         self::assertSame('https://hc-ping.com/uuid', $this->hbHttp->calls[0]['url']);
         // No new archive was produced
         self::assertArrayNotHasKey('db/run-1.zip', $this->dest->objects);
+    }
+
+    public function testResumeReportsOnlyFinalizationProgress(): void
+    {
+        (new RunCatalog($this->dest))->publish(
+            $this->catalogEntry('run-1', '2026-07-11T00:00:00+00:00'),
+        );
+        $updates = [];
+
+        $record = $this->runner()->run(
+            $this->ctx('run-1'),
+            static function(float $progress, string $label) use (&$updates): void {
+                $updates[] = [$progress, $label];
+            },
+        );
+
+        self::assertTrue($record->isCommitted());
+        self::assertSame([[0.90, 'Finalizing previous backup']], $updates);
     }
 
     public function testResumeReportsTheCommittedBackupsOwnTimestampAndSize(): void

@@ -25,7 +25,7 @@ final class BackupRunner
     ) {
     }
 
-    public function run(RunContext $ctx): RunRecord
+    public function run(RunContext $ctx, ?\Closure $onProgress = null): RunRecord
     {
         $record = new RunRecord($ctx->runId, $ctx->startedAt);
         $owner = 'backup:' . $ctx->runId;
@@ -49,6 +49,7 @@ final class BackupRunner
             // A check failure falls through to the shared catch, so failure
             // notifications still fire.
             if ($this->catalog->has($ctx->runId)) {
+                $this->progress('finalize', 0.90, 'Finalizing previous backup', $onProgress);
                 // Report the committed backup's own timestamp and size rather than
                 // this attempt's. The local run cache drives the "backups are
                 // overdue" indicator, so dating a resume as if it were a fresh dump
@@ -65,23 +66,23 @@ final class BackupRunner
             $this->preflight->run();
             $record->markUploading();
 
-            $this->lock->progress('dump');
+            $this->progress('dump', 0.10, 'Dumping database', $onProgress);
             $dumpPath = $this->dumper->dump($ctx->workDir);
             $tmpFiles[] = $dumpPath;
 
             $zipPath = $ctx->workDir . '/' . $ctx->runId . '.zip';
             // Registered before the zip is created: a partially written zip is also cleaned up on failure
             $tmpFiles[] = $zipPath;
-            $this->lock->progress('archive');
+            $this->progress('archive', 0.35, 'Creating archive', $onProgress);
             $archive = $this->archiver->zipFile($dumpPath, $zipPath, 'backup.sql');
 
             $objectKey = $ctx->objectKeyPrefix . $ctx->runId . '.zip';
-            $this->lock->progress('upload');
+            $this->progress('upload', 0.55, 'Uploading backup', $onProgress);
             $archiveSizeBytes = $archive->sizeBytes;
             $this->dest->put($objectKey, $archive->path, $archive->sha256);
 
             // Catalog publish is the sole evidence of commit
-            $this->lock->progress('publish');
+            $this->progress('publish', 0.85, 'Publishing backup', $onProgress);
             $this->catalog->publish(new CatalogEntry(
                 runId: $ctx->runId,
                 startedAt: $ctx->startedAt,
@@ -96,7 +97,7 @@ final class BackupRunner
             ));
             $record->markCommitted();
 
-            $this->lock->progress('retention');
+            $this->progress('retention', 0.95, 'Applying retention', $onProgress);
             $this->applyRetention($record, $ctx->siteUid);
         } catch (\Throwable $e) {
             if ($record->isCommitted()) {
@@ -120,6 +121,22 @@ final class BackupRunner
         }
 
         return $record;
+    }
+
+    private function progress(
+        string $phase,
+        float $progress,
+        string $label,
+        ?\Closure $onProgress,
+    ): void {
+        $this->lock->progress($phase);
+        if ($onProgress !== null) {
+            try {
+                $onProgress($progress, $label);
+            } catch (\Throwable) {
+                // Progress is display-only and must never change backup correctness.
+            }
+        }
     }
 
     private function applyRetention(RunRecord $record, string $siteUid): void
