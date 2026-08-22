@@ -29,7 +29,7 @@
    php craft offsite/restore/db 20260712-030000-Ab3dEf --execute
    ```
 
-   What happens, in order: the archive is downloaded and its **SHA-256 verified against the catalog**, the zip's CRC is checked, the SQL file is sanity-checked — only after all of that does anything destructive begin. Maintenance mode is enabled, a **pre-restore dump** of the current database is taken as a rollback point, the import runs, caches are flushed, and the schema version is compared against the catalog entry.
+   What happens, in order: the archive is downloaded and its **SHA-256 verified against the catalog**, the zip's CRC is checked, the dump is sanity-checked against its recorded format (plain SQL or pg_dump custom archive) — only after all of that does anything destructive begin. Maintenance mode is enabled, a **pre-restore dump** of the current database is taken as a rollback point, the import runs (via `pg_restore` for custom-format backups), caches are flushed, and the schema version is compared against the catalog entry.
 
    > **Required**: block external traffic at the web-server/load-balancer level while restoring. Craft stores the maintenance flag in the database itself, so the flag is briefly overwritten by the imported data during the import (the same limitation applies to Craft's own `db/restore`). Offsite re-enables the flag immediately after the import, but external blocking is the only complete guarantee against serving a partially-imported database.
 
@@ -37,7 +37,7 @@
 
 ## Rollback
 
-If the import itself fails, Offsite automatically restores the pre-restore dump. If you need to roll back *after* a successful restore, the pre-restore dump path was printed at the end of the run (kept under `storage/runtime/offsite/work/`):
+If the import itself fails, Offsite automatically restores the pre-restore dump, dispatching `pg_restore` or `psql` according to the rollback file's actual content. If you need to roll back *after* a successful restore, the pre-restore dump path was printed at the end of the run (kept under `storage/runtime/offsite/work/`; the extension is `.sql` for plain dumps, `.dump` for custom-format ones):
 
 ```bash
 php craft db/restore storage/runtime/offsite/work/pre-restore-20260712143000.sql

@@ -3,12 +3,17 @@
 ## Unreleased
 
 ### Added
+- PostgreSQL `backupCommandFormat = 'custom'` support: dumps are verified to carry the pg_dump custom-archive magic before the run commits, stored uncompressed inside the archive (custom archives are already compressed), recorded as `dumpFormat` in catalog manifests, and restored through `pg_restore` — including the automatic rollback path, which sniffs the rollback dump's actual content to pick the restore binary. The pre-dump rejection still applies to `tar`/`directory` and to `custom` on Craft versions below 5.2 (where Craft silently ignores the setting).
 - Control panel backup jobs now show phase-based progress for database dumping, archive creation, upload, catalog publishing, retention, and resumed-job finalization.
 - A queued backup that is interrupted by a worker death (server reboot, deploy, queue TTR kill) can no longer turn into two backups. The job now carries a fixed run ID, and a re-delivered attempt whose backup was already committed just finishes the bookkeeping (notifications, heartbeat) instead of taking a second backup. Such a job is retried once; note that Craft only re-delivers it after its reservation expires, which takes up to the 24-hour TTR, so the next scheduled run usually gets there first.
 
 ### Changed
+- The engine-layer `DatabaseDumper::dump()` contract now returns a `DumpResult` value object (dump path + `DumpFormat`) instead of a bare path.
 - The queue TTR (24 hours) is now declared by the backup job itself.
 - The local run cache never demotes a committed run when a re-delivered attempt fails afterwards, and a resumed run is now recorded under the original backup's timestamp and size instead of the retry's.
+
+### Compatibility
+- Backups taken before this release (plain dumps whose manifest has no `dumpFormat` field) restore exactly as before.
 
 ## 1.0.1 - 2026-07-22
 

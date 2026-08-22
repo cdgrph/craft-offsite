@@ -7,7 +7,7 @@ Scheduled, generation-managed off-site database backups for Craft CMS — with i
 - Craft CMS `^5.0`
 - PHP `^8.2` with `ext-zip` and `ext-curl`
 - `mysqldump` or `pg_dump` on the server — *the same requirement as Craft's own Database Backup utility* (Offsite delegates to Craft core's native backup)
-- The default plain-SQL backup format. Custom `backupCommandFormat` values (`custom`/`tar`/`directory`, Craft 5.2+) are not supported in v1.0
+- Craft's default plain-SQL backup format, or on PostgreSQL (Craft 5.2+) the pg_dump custom format (`backupCommandFormat = 'custom'`). `tar` and `directory` are not supported and are rejected before the dump starts
 - An S3-compatible object storage bucket
 - Craft's `backupCommand` config setting must not be disabled (`false`) — Offsite delegates database dumps to Craft's native backup
 

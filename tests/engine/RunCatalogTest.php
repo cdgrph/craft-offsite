@@ -87,4 +87,38 @@ final class RunCatalogTest extends TestCase
         $this->expectException(DestinationException::class);
         (new RunCatalog($dest))->has('run-1');
     }
+
+    public function testFromArrayDefaultsDumpFormatToPlain(): void
+    {
+        // Manifests published before the dumpFormat field existed must keep restoring
+        $legacy = $this->entry('run-1', '2026-07-01T00:00:00+00:00')->toArray();
+        unset($legacy['dumpFormat']);
+
+        $e = CatalogEntry::fromArray($legacy);
+        self::assertSame('plain', $e->dumpFormat);
+    }
+
+    public function testDumpFormatRoundTripsThroughCatalog(): void
+    {
+        $dest = new FakeDestination();
+        $catalog = new RunCatalog($dest);
+        $catalog->publish(new CatalogEntry(
+            runId: 'run-1',
+            startedAt: '2026-07-01T00:00:00+00:00',
+            siteUid: 'site-uid-1',
+            craftVersion: '5.10.11',
+            schemaVersion: '5.10.0.1',
+            pluginVersion: '1.1.0',
+            dbDriver: 'pgsql',
+            objectKey: 'db/run-1.zip',
+            sizeBytes: 123,
+            sha256: str_repeat('a', 64),
+            dumpFormat: 'custom',
+        ));
+
+        $e = $catalog->get('run-1');
+        self::assertSame('custom', $e->dumpFormat);
+        $stored = json_decode($dest->objects['catalog/run-1.json'], true);
+        self::assertSame('custom', $stored['dumpFormat'] ?? null);
+    }
 }
