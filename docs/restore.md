@@ -23,6 +23,8 @@
    | schema version matches | Migrations ran since the backup — plan to run `craft migrate/all` after restoring |
    | DB driver matches | Backup is mysql but this env is pgsql (or vice versa) — do not force this one |
 
+   Restoring also refuses to start when the *currently configured* `backupCommandFormat` is `tar`/`directory` (or `custom` on Craft < 5.2): the pre-restore rollback dump would then be taken in a format the automatic rollback cannot dispatch, so Offsite aborts before touching anything.
+
 3. Execute:
 
    ```bash

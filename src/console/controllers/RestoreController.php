@@ -39,6 +39,16 @@ final class RestoreController extends Controller
         $entry = $catalog->get($runId);
         $info = \Craft::$app->getInfo();
 
+        // The pre-restore rollback dump is taken under the *currently configured*
+        // backupCommandFormat. tar/directory (or custom on pre-5.2 Craft) would
+        // produce a rollback file the plain/custom content sniff cannot dispatch,
+        // breaking the automatic rollback — refuse before anything runs
+        $unsupportedFormat = CraftDatabaseDumper::unsupportedBackupFormat();
+        if ($unsupportedFormat !== null) {
+            $this->stderr(CraftDatabaseDumper::unsupportedFormatMessage($unsupportedFormat) . "\n", Console::FG_RED);
+            return ExitCode::UNSPECIFIED_ERROR;
+        }
+
         // --- Preflight report (also runs in dry-run) ---
         $checks = [
             'site UID matches' => $entry->siteUid === (string)$info->uid,
