@@ -16,6 +16,7 @@ final class CatalogEntry
         public readonly string $objectKey,
         public readonly int $sizeBytes,
         public readonly string $sha256,
+        public readonly string $dumpFormat = 'plain',
     ) {
     }
 
@@ -37,6 +38,8 @@ final class CatalogEntry
             objectKey: $a['objectKey'],
             sizeBytes: $a['sizeBytes'],
             sha256: $a['sha256'],
+            // Manifests published before this field existed are all plain dumps
+            dumpFormat: $a['dumpFormat'] ?? 'plain',
         );
     }
 }

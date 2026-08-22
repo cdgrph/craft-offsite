@@ -48,7 +48,7 @@ final class DiagnoseController extends Controller
             $lines[] = 'backup command format: ' . $format;
             $unsupportedFormat = CraftDatabaseDumper::unsupportedBackupFormat();
             if ($unsupportedFormat !== null) {
-                $lines[] = "warning: backupCommandFormat '{$unsupportedFormat}' is not supported — Offsite requires Craft's plain-SQL backup format. Backups will fail until it is reverted.";
+                $lines[] = 'warning: ' . CraftDatabaseDumper::unsupportedFormatMessage($unsupportedFormat) . ' Backups will fail until it is reverted.';
             }
         }
         array_push(

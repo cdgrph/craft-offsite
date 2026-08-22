@@ -67,14 +67,21 @@ final class BackupRunner
             $record->markUploading();
 
             $this->progress('dump', 0.10, 'Dumping database', $onProgress);
-            $dumpPath = $this->dumper->dump($ctx->workDir);
-            $tmpFiles[] = $dumpPath;
+            $dump = $this->dumper->dump($ctx->workDir);
+            $tmpFiles[] = $dump->path;
 
             $zipPath = $ctx->workDir . '/' . $ctx->runId . '.zip';
             // Registered before the zip is created: a partially written zip is also cleaned up on failure
             $tmpFiles[] = $zipPath;
             $this->progress('archive', 0.35, 'Creating archive', $onProgress);
-            $archive = $this->archiver->zipFile($dumpPath, $zipPath, 'backup.sql');
+            // A custom-format dump is already compressed; storing it avoids burning
+            // CPU on a second (useless) deflate pass
+            $archive = $this->archiver->zipFile(
+                $dump->path,
+                $zipPath,
+                $dump->format->entryName(),
+                compress: !$dump->format->preCompressed(),
+            );
 
             $objectKey = $ctx->objectKeyPrefix . $ctx->runId . '.zip';
             $this->progress('upload', 0.55, 'Uploading backup', $onProgress);
@@ -94,6 +101,7 @@ final class BackupRunner
                 objectKey: $objectKey,
                 sizeBytes: $archive->sizeBytes,
                 sha256: $archive->sha256,
+                dumpFormat: $dump->format->value,
             ));
             $record->markCommitted();
 

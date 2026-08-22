@@ -8,6 +8,7 @@ use cdgrph\offsite\engine\BackupRunner;
 use cdgrph\offsite\engine\CatalogEntry;
 use cdgrph\offsite\engine\DatabaseDumper;
 use cdgrph\offsite\engine\Destination;
+use cdgrph\offsite\engine\DumpFormat;
 use cdgrph\offsite\engine\HeartbeatPinger;
 use cdgrph\offsite\engine\Notifier;
 use cdgrph\offsite\engine\PreflightChecks;
@@ -84,12 +85,39 @@ final class BackupRunnerTest extends TestCase
         self::assertTrue($record->isCommitted());
         self::assertArrayHasKey('catalog/run-1.json', $this->dest->objects);
         self::assertArrayHasKey('db/run-1.zip', $this->dest->objects);
+        // Plain dumps keep the legacy entry name and are recorded as such
+        $manifest = json_decode($this->dest->objects['catalog/run-1.json'], true);
+        self::assertSame('plain', $manifest['dumpFormat']);
         // On success: heartbeat GETs the base URL; Slack is not called because notifyOnSuccess=false
         self::assertSame('https://hc-ping.com/uuid', $this->hbHttp->calls[0]['url']);
         self::assertSame([], $this->slackHttp->calls);
         // Temp files are cleaned up
         self::assertSame([], glob($this->workDir . '/*.sql') ?: []);
         self::assertSame([], glob($this->workDir . '/*.zip') ?: []);
+    }
+
+    public function testCustomFormatRunStoresDumpEntryAndRecordsFormat(): void
+    {
+        $this->dumper->format = DumpFormat::Custom;
+
+        $record = $this->runner()->run($this->ctx('run-1'));
+
+        self::assertTrue($record->isCommitted());
+        $manifest = json_decode($this->dest->objects['catalog/run-1.json'], true);
+        self::assertSame('custom', $manifest['dumpFormat']);
+
+        // The archive stores the (already compressed) custom dump uncompressed
+        // under the format's entry name
+        $zipFile = tempnam(sys_get_temp_dir(), 'offsite-zip');
+        file_put_contents($zipFile, $this->dest->objects['db/run-1.zip']);
+        $zip = new \ZipArchive();
+        $zip->open($zipFile);
+        $stat = $zip->statName('backup.dump');
+        self::assertNotNull($stat, 'archive must contain backup.dump');
+        self::assertSame($stat['size'], $stat['comp_size'], 'custom dump entry must be stored, not deflated');
+        self::assertStringStartsWith('PGDMP', $zip->getFromName('backup.dump'));
+        $zip->close();
+        unlink($zipFile);
     }
 
     public function testReportsBackupProgressAtPhaseBoundaries(): void
@@ -291,7 +319,7 @@ final class BackupRunnerTest extends TestCase
         $dumper = new class implements DatabaseDumper {
             public bool $called = false;
 
-            public function dump(string $targetDir): string
+            public function dump(string $targetDir): \cdgrph\offsite\engine\DumpResult
             {
                 $this->called = true;
                 throw new \RuntimeException('Dump must not run while the lock is unavailable.');
@@ -340,7 +368,7 @@ final class BackupRunnerTest extends TestCase
         // A predecessor attempt died after publishing run-1
         (new RunCatalog($this->dest))->publish($this->catalogEntry('run-1', '2026-07-11T00:00:00+00:00'));
         $dumper = new class implements DatabaseDumper {
-            public function dump(string $targetDir): string
+            public function dump(string $targetDir): \cdgrph\offsite\engine\DumpResult
             {
                 throw new \RuntimeException('A resumed run must not dump again.');
             }

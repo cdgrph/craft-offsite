@@ -5,6 +5,6 @@ namespace cdgrph\offsite\engine;
 
 interface DatabaseDumper
 {
-    /** Dumps the DB into $targetDir and returns the dump file path. Throws on failure. */
-    public function dump(string $targetDir): string;
+    /** Dumps the DB into $targetDir and returns the dump path and format. Throws on failure. */
+    public function dump(string $targetDir): DumpResult;
 }

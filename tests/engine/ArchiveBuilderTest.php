@@ -33,4 +33,40 @@ final class ArchiveBuilderTest extends TestCase
         $this->expectException(\RuntimeException::class);
         (new ArchiveBuilder())->zipFile('/nonexistent/file.sql', sys_get_temp_dir() . '/x.zip', 'backup.sql');
     }
+
+    public function testStoreModeLeavesEntryUncompressed(): void
+    {
+        // Incompressible payload, so deflate could never match the stored size
+        $src = tempnam(sys_get_temp_dir(), 'dump');
+        file_put_contents($src, random_bytes(4096));
+        $target = sys_get_temp_dir() . '/offsite-test-' . uniqid() . '.zip';
+
+        (new ArchiveBuilder())->zipFile($src, $target, 'backup.dump', compress: false);
+
+        $zip = new \ZipArchive();
+        $zip->open($target);
+        $stat = $zip->statName('backup.dump');
+        self::assertSame($stat['size'], $stat['comp_size'], 'stored entry must not be compressed');
+        self::assertSame(file_get_contents($src), $zip->getFromName('backup.dump'));
+        $zip->close();
+        unlink($src);
+        unlink($target);
+    }
+
+    public function testDefaultModeDeflates(): void
+    {
+        $src = tempnam(sys_get_temp_dir(), 'dump');
+        file_put_contents($src, str_repeat("-- fake dump\nSELECT 1;\n", 5000));
+        $target = sys_get_temp_dir() . '/offsite-test-' . uniqid() . '.zip';
+
+        (new ArchiveBuilder())->zipFile($src, $target, 'backup.sql');
+
+        $zip = new \ZipArchive();
+        $zip->open($target);
+        $stat = $zip->statName('backup.sql');
+        self::assertLessThan($stat['size'], $stat['comp_size'], 'deflate must shrink a compressible dump');
+        $zip->close();
+        unlink($src);
+        unlink($target);
+    }
 }
