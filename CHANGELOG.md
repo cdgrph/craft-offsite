@@ -3,19 +3,19 @@
 ## 1.1.0 - 2026-08-23
 
 ### Added
-- PostgreSQL `backupCommandFormat = 'custom'` support: dumps are verified to carry the pg_dump custom-archive magic before the run commits, stored uncompressed inside the archive (custom archives are already compressed), recorded as `dumpFormat` in catalog manifests, and restored through `pg_restore` — including the automatic rollback path, which sniffs the rollback dump's actual content to pick the restore binary. The pre-dump rejection still applies to `tar`/`directory` and to `custom` on Craft versions below 5.2 (which lack the per-run restore-format control needed to dispatch pg_restore).
-- `offsite/restore/db` refuses to start when the currently configured `backupCommandFormat` is one the rollback path cannot dispatch (`tar`/`directory`, or `custom` on Craft < 5.2), since the pre-restore rollback dump would be taken in a format the automatic rollback could not restore. It also refuses when restores cannot run at all (`restoreCommand = false`) or when a custom backup — or a custom rollback dump — would bypass the pg_restore dispatch (a `restoreCommand` override, string or Closure), and runs the rollback dump through the same content sanity check as the backup path before the destructive import — output that fails the expected format's check (e.g. an empty file) aborts the restore with the database untouched.
-- Control panel backup jobs now show phase-based progress for database dumping, archive creation, upload, catalog publishing, retention, and resumed-job finalization.
-- A queued backup that is interrupted by a worker death (server reboot, deploy, queue TTR kill) can no longer turn into two backups. The job now carries a fixed run ID, and a re-delivered attempt whose backup was already committed just finishes the bookkeeping (notifications, heartbeat) instead of taking a second backup. Such a job is retried once; note that Craft only re-delivers it after its reservation expires, which takes up to the 24-hour TTR, so the next scheduled run usually gets there first.
+- PostgreSQL support for `backupCommandFormat = 'custom'`: dumps are stored as pg_dump custom archives (already compressed), verified before the run commits, recorded as `dumpFormat` in catalog manifests, and restored through `pg_restore` — including the automatic rollback path. Requires Craft 5.2+; `tar`/`directory` remain unsupported.
+- `offsite/restore/db` now preflights the restore: it refuses to start when the configured `backupCommandFormat` would leave the automatic rollback unrestorable (`tar`/`directory`, or `custom` on Craft < 5.2), when restores cannot run at all (`restoreCommand = false`), or when a custom-format backup or rollback dump would bypass the pg_restore dispatch (via a `restoreCommand` override) — and it verifies the rollback dump's content before the destructive import.
+- Control panel backup jobs now show phase-based progress (dump, archive, upload, catalog, retention).
+- A queued backup interrupted by a worker death can no longer turn into two backups: the job carries a fixed run ID, and a re-delivered attempt whose backup already committed just finishes the bookkeeping. Craft only re-delivers it after the 24-hour reservation expires, so the next scheduled run usually gets there first.
 
 ### Changed
-- The engine-layer `DatabaseDumper::dump()` contract now returns a `DumpResult` value object (dump path + `DumpFormat`) instead of a bare path.
+- `DatabaseDumper::dump()` now returns a `DumpResult` value object (dump path + format) instead of a bare path.
 - The queue TTR (24 hours) is now declared by the backup job itself.
-- The local run cache never demotes a committed run when a re-delivered attempt fails afterwards, and a resumed run is now recorded under the original backup's timestamp and size instead of the retry's.
+- The local run cache never demotes a committed run when a re-delivered attempt fails afterwards; a resumed run is recorded under the original backup's timestamp and size.
 
 ### Compatibility
-- Backups taken before this release (plain dumps whose manifest has no `dumpFormat` field) are still read as plain and restored through the same `backup.sql` path; the new restore preflight rejections above apply to those restores as well.
-- The reverse direction does not hold: custom-format backups (`backup.dump` entry) can only be restored by this release or later — an older Offsite 1.0.x install looks for `backup.sql` and refuses the archive. Plain backups restore on both.
+- Backups taken before this release (no `dumpFormat` in the manifest) are still read as plain dumps and restored via `backup.sql`; the new restore preflight rejections apply to them as well.
+- Custom-format backups (`backup.dump`) require this release or later to restore; plain backups restore on both.
 
 ## 1.0.1 - 2026-07-22
 
