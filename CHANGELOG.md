@@ -4,7 +4,7 @@
 
 ### Added
 - PostgreSQL support for `backupCommandFormat = 'custom'`: dumps are stored as pg_dump custom archives (already compressed), verified before the run commits, recorded as `dumpFormat` in catalog manifests, and restored through `pg_restore` — including the automatic rollback path. Requires Craft 5.2+; `tar`/`directory` remain unsupported.
-- `offsite/restore/db` now refuses to start when the configured backup format is one the rollback path cannot restore (`tar`/`directory`, `custom` on Craft < 5.2, or a custom `restoreCommand`), and verifies the rollback dump before the destructive import.
+- `offsite/restore/db` now preflights the restore: it refuses to start when the configured `backupCommandFormat` would leave the automatic rollback unrestorable (`tar`/`directory`, or `custom` on Craft < 5.2), when restores cannot run at all (`restoreCommand = false`), or when a custom-format backup or rollback dump would bypass the pg_restore dispatch (via a `restoreCommand` override) — and it verifies the rollback dump's content before the destructive import.
 - Control panel backup jobs now show phase-based progress (dump, archive, upload, catalog, retention).
 - A queued backup interrupted by a worker death can no longer turn into two backups: the job carries a fixed run ID, and a re-delivered attempt whose backup already committed just finishes the bookkeeping. Craft only re-delivers it after the 24-hour reservation expires, so the next scheduled run usually gets there first.
 
