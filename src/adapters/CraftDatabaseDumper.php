@@ -14,15 +14,21 @@ use cdgrph\offsite\engine\DumpResult;
 final class CraftDatabaseDumper implements DatabaseDumper
 {
     /**
-     * The backupCommandFormat value Craft will actually apply to this request:
-     * null on MySQL (PostgreSQL-only setting) and on Craft versions without
-     * the property, otherwise the configured value. Single resolution point
-     * shared by the gate below, dump(), and rollback-dump naming on restore.
+     * The backup format Craft will actually apply to this request: null on
+     * MySQL (PostgreSQL-only setting). Resolution is schema-first where the
+     * plumbing exists (Schema::getBackupFormat(), 5.2+ — a runtime
+     * setBackupFormat() override beats config there), falling back to the
+     * backupCommandFormat config. Single resolution point shared by the gate
+     * below, dump(), and rollback-dump naming on restore.
      */
     public static function resolvedBackupFormat(): ?string
     {
         if (!\Craft::$app->getDb()->getIsPgsql()) {
             return null;
+        }
+        $schema = \Craft::$app->getDb()->getSchema();
+        if (method_exists($schema, 'getBackupFormat')) {
+            return $schema->getBackupFormat();
         }
         $general = \Craft::$app->getConfig()->getGeneral();
         return property_exists($general, 'backupCommandFormat') ? $general->backupCommandFormat : null;
@@ -74,7 +80,15 @@ final class CraftDatabaseDumper implements DatabaseDumper
 
         $fmt = self::resolvedBackupFormat() === 'custom' ? DumpFormat::Custom : DumpFormat::Plain;
         $path = rtrim($targetDir, '/') . '/dump-' . date('YmdHis') . $fmt->extension();
-        \Craft::$app->getDb()->backupTo($path);
+        try {
+            \Craft::$app->getDb()->backupTo($path);
+        } catch (\Throwable $e) {
+            // A failed dump can leave a partial file behind, and nothing else
+            // sweeps the work dir — remove it so failures cannot accumulate
+            // into a disk-space backup outage
+            @unlink($path);
+            throw $e;
+        }
         if (!is_file($path) || filesize($path) === 0) {
             throw new \RuntimeException("Craft DB backup produced no file at {$path}.");
         }
@@ -132,9 +146,9 @@ final class CraftDatabaseDumper implements DatabaseDumper
     public static function unsupportedFormatMessage(string $format): string
     {
         if ($format === 'custom') {
-            // Craft 5.1 has the config property but nothing consumes it: pg_dump
-            // would run plain while the catalog says custom
-            return "backupCommandFormat is set to 'custom', which requires Craft 5.2+ — on older versions Craft ignores the setting and the dump would come out plain.";
+            // Pre-5.2 Craft lacks Schema::setRestoreFormat(), so Offsite cannot
+            // dispatch pg_restore per run — custom dumps would be unrestorable
+            return "backupCommandFormat is set to 'custom', which requires Craft 5.2+ — older versions lack the per-run restore-format control (pg_restore dispatch) Offsite needs.";
         }
         return "backupCommandFormat is set to '{$format}' — Offsite supports Craft's plain-SQL format and, on Craft 5.2+ (PostgreSQL), the pg_dump custom format.";
     }

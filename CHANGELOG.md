@@ -15,6 +15,7 @@
 
 ### Compatibility
 - Backups taken before this release (plain dumps whose manifest has no `dumpFormat` field) are still read as plain and restored through the same `backup.sql` path; the new restore preflight rejections above apply to those restores as well.
+- The reverse direction does not hold: custom-format backups (`backup.dump` entry) can only be restored by this release or later — an older Offsite 1.0.x install looks for `backup.sql` and refuses the archive. Plain backups restore on both.
 
 ## 1.0.1 - 2026-07-22
 

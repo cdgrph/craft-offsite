@@ -62,13 +62,26 @@ final class BackupCommandFormatTest extends TestCase
         \Yii::$app = null;
     }
 
-    /** Schema stub that has the Craft 5.2+ format plumbing (setBackupFormat). */
+    /**
+     * Schema stub mirroring the Craft 5.2+ format plumbing: setBackupFormat()
+     * stores a per-run override, getBackupFormat() resolves override ?? config
+     * exactly like craft\db\pgsql\Schema does.
+     */
     private function schemaWithFormatSupport(): object
     {
         return new class
         {
+            private ?string $backupFormat = null;
+
             public function setBackupFormat(string $format): void
             {
+                $this->backupFormat = $format;
+            }
+
+            public function getBackupFormat(): ?string
+            {
+                return $this->backupFormat
+                    ?? \Craft::$app->getConfig()->getGeneral()->backupCommandFormat;
             }
         };
     }
@@ -122,8 +135,8 @@ final class BackupCommandFormatTest extends TestCase
 
     public function testCustomFormatOnPreCraft52IsRejectedBeforeDump(): void
     {
-        // Craft 5.1 has the config property but nothing consumes it, so the dump
-        // would silently come out plain while labeled custom — reject pre-dump
+        // Pre-5.2 Craft lacks Schema::setRestoreFormat(), so Offsite cannot
+        // dispatch pg_restore per run — custom dumps would be unrestorable
         $db = new FakeDbConnection(true, new \stdClass(), 'should never be written');
         $this->bootApp("['backupCommandFormat' => 'custom']", $db);
 
@@ -224,6 +237,33 @@ final class BackupCommandFormatTest extends TestCase
         $db = new FakeDbConnection(false, null, '');
         $this->bootApp("['backupCommandFormat' => 'custom']", $db);
         self::assertNull(CraftDatabaseDumper::resolvedBackupFormat());
+    }
+
+    public function testResolvedBackupFormatPrefersSchemaRuntimeOverride(): void
+    {
+        // Another actor in the same process may call setBackupFormat(); the
+        // plugin's expectation must track what pg_dump actually receives
+        $schema = $this->schemaWithFormatSupport();
+        $schema->setBackupFormat('custom');
+        $db = new FakeDbConnection(true, $schema, '');
+        $this->bootApp('[]', $db); // config says plain, runtime override says custom
+
+        self::assertSame('custom', CraftDatabaseDumper::resolvedBackupFormat());
+    }
+
+    public function testFailedDumpLeavesNoPartialFileBehind(): void
+    {
+        $db = new FakeDbConnection(true, $this->schemaWithFormatSupport(), '');
+        $db->failBackupTo = true;
+        $this->bootApp("['backupCommandFormat' => 'custom']", $db);
+
+        try {
+            (new CraftDatabaseDumper())->dump($this->workDir);
+            self::fail('expected RuntimeException from failed backupTo');
+        } catch (\RuntimeException $e) {
+            self::assertStringContainsString('pg_dump exited 1', $e->getMessage());
+        }
+        self::assertSame([], glob($this->workDir . '/dump-*') ?: [], 'a failed dump must not leave a partial file in the work dir');
     }
 
     public function testDetectDumpFormatSniffsFileContent(): void

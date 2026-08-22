@@ -38,12 +38,24 @@ final class RestoreController extends Controller
         $catalog = $factory->catalog();
         $entry = $catalog->get($runId);
         $info = \Craft::$app->getInfo();
-        $fmt = self::entryFormat($entry->dumpFormat);
+        $fmt = DumpFormat::tryFrom($entry->dumpFormat);
+        if ($fmt === null) {
+            $this->stderr("Catalog entry carries unknown dumpFormat '{$entry->dumpFormat}' — refusing to restore.\n", Console::FG_RED);
+            return ExitCode::UNSPECIFIED_ERROR;
+        }
 
         // Restores cannot run at all while Craft's restoreCommand is false —
         // the connection throws before executing anything. Fail up front
         if (\Craft::$app->getConfig()->getGeneral()->restoreCommand === false) {
             $this->stderr("Craft's restoreCommand config setting is false — restores are disabled in this environment.\n", Console::FG_RED);
+            return ExitCode::UNSPECIFIED_ERROR;
+        }
+
+        // The pre-restore rollback dump is mandatory in this flow, so a disabled
+        // backup command matters just as much: backupTo() would throw mid-run,
+        // after maintenance is already enabled. Refuse up front instead
+        if (CraftDatabaseDumper::backupCommandDisabled()) {
+            $this->stderr("Craft's backupCommand config setting is false — the pre-restore rollback dump cannot be taken, so restores cannot run in this environment.\n", Console::FG_RED);
             return ExitCode::UNSPECIFIED_ERROR;
         }
 
@@ -61,11 +73,17 @@ final class RestoreController extends Controller
         // a string restoreCommand replaces it outright, and a Closure receives the
         // built command and may replace it too. Either way the pg_restore dispatch
         // is not guaranteed — refuse instead (false is handled above)
-        if ($fmt === DumpFormat::Custom
-            && \Craft::$app->getDb()->getIsPgsql()
-            && \Craft::$app->getConfig()->getGeneral()->restoreCommand !== null
-        ) {
+        if ($fmt === DumpFormat::Custom && self::restoreCommandBlocksPgRestore()) {
             $this->stderr("Restoring a custom-format backup requires Craft's default restore command (pg_restore dispatch), but the restoreCommand config setting is overridden in this environment.\n", Console::FG_RED);
+            return ExitCode::UNSPECIFIED_ERROR;
+        }
+
+        // The rollback dump follows the *currently resolved* format: when the site
+        // resolves to custom dumps, the rollback point will need pg_restore too,
+        // which the same override cannot guarantee — refuse before anything runs
+        // (the post-dump re-check below remains as defense in depth)
+        if (CraftDatabaseDumper::resolvedBackupFormat() === 'custom' && self::restoreCommandBlocksPgRestore()) {
+            $this->stderr("The pre-restore rollback dump would be a custom archive, but the restoreCommand config setting is overridden in this environment — the automatic rollback could not dispatch pg_restore.\n", Console::FG_RED);
             return ExitCode::UNSPECIFIED_ERROR;
         }
 
@@ -168,8 +186,11 @@ final class RestoreController extends Controller
 
             // 3. Pre-restore local dump = rollback point (internal primitive under the same lock ownership)
             $lock->progress('rollback-dump');
-            $rollbackFmt = CraftDatabaseDumper::resolvedBackupFormat() === 'custom' ? DumpFormat::Custom : DumpFormat::Plain;
-            $rollback = $work . '/pre-restore-' . date('YmdHis') . $rollbackFmt->extension();
+            // Naming only: the extension follows the *configured* format here — a
+            // backupCommand override can still diverge the actual content, which is
+            // why every dispatch decision below sniffs the file instead
+            $rollbackNameFmt = CraftDatabaseDumper::resolvedBackupFormat() === 'custom' ? DumpFormat::Custom : DumpFormat::Plain;
+            $rollback = $work . '/pre-restore-' . date('YmdHis') . $rollbackNameFmt->extension();
             $this->stdout("Taking pre-restore dump: {$rollback}\n");
             \Craft::$app->getDb()->backupTo($rollback);
             // The rollback point is only as good as its content: a string/Closure
@@ -178,14 +199,18 @@ final class RestoreController extends Controller
             // the destructive import — the current DB is still untouched here
             $rollbackFmt = CraftDatabaseDumper::detectDumpFormat($rollback);
             CraftDatabaseDumper::assertDumpLooksLike($rollback, $rollbackFmt);
+            // The rollback must also be *dispatchable* — verify now, before the
+            // import: if this check only lived in the failure handler, an
+            // undispatchable rollback (override, pre-5.2, driver mismatch) would
+            // throw there and the rollback would never even be attempted
+            if ($reason = self::restoreDispatchRefusal($rollbackFmt)) {
+                throw new \RuntimeException($reason);
+            }
             // A custom rollback dump would need pg_restore, which neither a string
             // restoreCommand (replaces the command outright) nor a Closure (may
             // replace the built one) can guarantee — the automatic rollback could
             // not run, so never start the destructive import
-            if ($rollbackFmt === DumpFormat::Custom
-                && \Craft::$app->getDb()->getIsPgsql()
-                && \Craft::$app->getConfig()->getGeneral()->restoreCommand !== null
-            ) {
+            if ($rollbackFmt === DumpFormat::Custom && self::restoreCommandBlocksPgRestore()) {
                 throw new \RuntimeException('The pre-restore rollback dump is a custom archive, but the restoreCommand config setting is overridden in this environment — the automatic rollback could not dispatch pg_restore. Remove the override before restoring.');
             }
 
@@ -268,10 +293,38 @@ final class RestoreController extends Controller
         }
     }
 
-    private static function entryFormat(string $dumpFormat): DumpFormat
+    /**
+     * Whether a restoreCommand override removes the pg_restore dispatch
+     * guarantee in this environment: a string replaces Craft's default command
+     * outright, and a Closure receives the built command and may replace it
+     * too. (false is a separate, louder refusal handled inline.)
+     */
+    private static function restoreCommandBlocksPgRestore(): bool
     {
-        return DumpFormat::tryFrom($dumpFormat)
-            ?? throw new \RuntimeException("Catalog entry carries unknown dumpFormat '{$dumpFormat}' — refusing to restore.");
+        return \Craft::$app->getDb()->getIsPgsql()
+            && \Craft::$app->getConfig()->getGeneral()->restoreCommand !== null;
+    }
+
+    /**
+     * Why the restore binary for $fmt cannot be dispatched in this environment,
+     * or null when it can. Mirrors the checks applyRestoreFormat() enforces, so
+     * dispatch can be validated *before* the destructive import instead of the
+     * failure handler discovering the refusal mid-rollback.
+     */
+    private static function restoreDispatchRefusal(DumpFormat $fmt): ?string
+    {
+        if ($fmt !== DumpFormat::Custom) {
+            return null; // plain dispatches through psql / the mysql client everywhere
+        }
+        // A checksum-valid manifest can still be internally inconsistent;
+        // never feed a custom archive to a non-pgsql restore path
+        if (!\Craft::$app->getDb()->getIsPgsql()) {
+            return 'A custom-format backup cannot be restored on a non-PostgreSQL database — the catalog entry records an inconsistent driver/format pair.';
+        }
+        if (!method_exists(\Craft::$app->getDb()->getSchema(), 'setRestoreFormat')) {
+            return 'Restoring a custom-format backup requires Craft 5.2+ (pg_restore dispatch is unavailable).';
+        }
+        return null;
     }
 
     /**
@@ -283,21 +336,12 @@ final class RestoreController extends Controller
      */
     private static function applyRestoreFormat(DumpFormat $fmt): void
     {
+        if ($reason = self::restoreDispatchRefusal($fmt)) {
+            throw new \RuntimeException($reason);
+        }
         if (!\Craft::$app->getDb()->getIsPgsql()) {
-            if ($fmt === DumpFormat::Custom) {
-                // A checksum-valid manifest can still be internally inconsistent;
-                // never feed a custom archive to a non-pgsql restore path
-                throw new \RuntimeException('A custom-format backup cannot be restored on a non-PostgreSQL database — the catalog entry records an inconsistent driver/format pair.');
-            }
-            return;
+            return; // the mysql path never consults restoreFormat
         }
-        $schema = \Craft::$app->getDb()->getSchema();
-        if (!method_exists($schema, 'setRestoreFormat')) {
-            if ($fmt === DumpFormat::Custom) {
-                throw new \RuntimeException('Restoring a custom-format backup requires Craft 5.2+ (pg_restore dispatch is unavailable).');
-            }
-            return;
-        }
-        $schema->setRestoreFormat($fmt->value);
+        \Craft::$app->getDb()->getSchema()->setRestoreFormat($fmt->value);
     }
 }

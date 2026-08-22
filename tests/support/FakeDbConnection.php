@@ -13,6 +13,7 @@ final class FakeDbConnection
 {
     /** @var string[] paths passed to backupTo() */
     public array $backupCalls = [];
+    public bool $failBackupTo = false;
 
     public function __construct(
         private readonly bool $pgsql,
@@ -33,6 +34,11 @@ final class FakeDbConnection
 
     public function backupTo(string $path): void
     {
+        if ($this->failBackupTo) {
+            // Simulate a dump that fails mid-write, leaving a partial file
+            file_put_contents($path, 'partial dump byt');
+            throw new \RuntimeException('pg_dump exited 1');
+        }
         file_put_contents($path, $this->dumpBytes);
         $this->backupCalls[] = $path;
     }
