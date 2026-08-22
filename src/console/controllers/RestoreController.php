@@ -40,6 +40,13 @@ final class RestoreController extends Controller
         $info = \Craft::$app->getInfo();
         $fmt = self::entryFormat($entry->dumpFormat);
 
+        // Restores cannot run at all while Craft's restoreCommand is false —
+        // the connection throws before executing anything. Fail up front
+        if (\Craft::$app->getConfig()->getGeneral()->restoreCommand === false) {
+            $this->stderr("Craft's restoreCommand config setting is false — restores are disabled in this environment.\n", Console::FG_RED);
+            return ExitCode::UNSPECIFIED_ERROR;
+        }
+
         // The pre-restore rollback dump is taken under the *currently configured*
         // backupCommandFormat. tar/directory (or custom on pre-5.2 Craft) would
         // produce a rollback file the plain/custom content sniff cannot dispatch,
@@ -165,6 +172,11 @@ final class RestoreController extends Controller
             $rollback = $work . '/pre-restore-' . date('YmdHis') . $rollbackFmt->extension();
             $this->stdout("Taking pre-restore dump: {$rollback}\n");
             \Craft::$app->getDb()->backupTo($rollback);
+            // The rollback point is only as good as its content: a string/Closure
+            // backupCommand override can produce something that is neither a plain
+            // SQL dump nor a custom archive (tar, empty, corrupt). Refuse before
+            // the destructive import — the current DB is still untouched here
+            CraftDatabaseDumper::assertDumpLooksLike($rollback, CraftDatabaseDumper::detectDumpFormat($rollback));
 
             // 4. import (restoreFormat was already set in step 1)
             $lock->progress('import');
