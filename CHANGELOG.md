@@ -1,6 +1,6 @@
 # Release Notes for Offsite
 
-## Unreleased
+## 1.1.0 - 2026-08-23
 
 ### Added
 - PostgreSQL `backupCommandFormat = 'custom'` support: dumps are verified to carry the pg_dump custom-archive magic before the run commits, stored uncompressed inside the archive (custom archives are already compressed), recorded as `dumpFormat` in catalog manifests, and restored through `pg_restore` — including the automatic rollback path, which sniffs the rollback dump's actual content to pick the restore binary. The pre-dump rejection still applies to `tar`/`directory` and to `custom` on Craft versions below 5.2 (which lack the per-run restore-format control needed to dispatch pg_restore).
