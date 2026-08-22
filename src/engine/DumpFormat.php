@@ -14,6 +14,16 @@ enum DumpFormat: string
     case Custom = 'custom';
 
     /**
+     * Maps Craft's resolved backup format value (backupCommandFormat /
+     * Schema::getBackupFormat()) to a DumpFormat. Anything other than
+     * 'custom' — including null — is the plain default.
+     */
+    public static function fromResolved(?string $resolved): self
+    {
+        return $resolved === 'custom' ? self::Custom : self::Plain;
+    }
+
+    /**
      * File extension for dumps of this format (mirrors Craft's
      * Connection::_getDumpExtension() mapping for the custom case).
      */

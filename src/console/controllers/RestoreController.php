@@ -189,7 +189,7 @@ final class RestoreController extends Controller
             // Naming only: the extension follows the *configured* format here — a
             // backupCommand override can still diverge the actual content, which is
             // why every dispatch decision below sniffs the file instead
-            $rollbackNameFmt = CraftDatabaseDumper::resolvedBackupFormat() === 'custom' ? DumpFormat::Custom : DumpFormat::Plain;
+            $rollbackNameFmt = DumpFormat::fromResolved(CraftDatabaseDumper::resolvedBackupFormat());
             $rollback = $work . '/pre-restore-' . date('YmdHis') . $rollbackNameFmt->extension();
             $this->stdout("Taking pre-restore dump: {$rollback}\n");
             \Craft::$app->getDb()->backupTo($rollback);
@@ -342,6 +342,13 @@ final class RestoreController extends Controller
         if (!\Craft::$app->getDb()->getIsPgsql()) {
             return; // the mysql path never consults restoreFormat
         }
-        \Craft::$app->getDb()->getSchema()->setRestoreFormat($fmt->value);
+        $schema = \Craft::$app->getDb()->getSchema();
+        if (!method_exists($schema, 'setRestoreFormat')) {
+            // Pre-5.2 has no per-run control; plain (the only format allowed
+            // there — see restoreDispatchRefusal) already dispatches via psql,
+            // so there is nothing to set
+            return;
+        }
+        $schema->setRestoreFormat($fmt->value);
     }
 }

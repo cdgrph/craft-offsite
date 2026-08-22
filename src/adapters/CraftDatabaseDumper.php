@@ -44,9 +44,9 @@ final class CraftDatabaseDumper implements DatabaseDumper
             return null;
         }
         // Never commit anything we cannot restore: tar/directory/unknown values
-        // (and custom on pre-5.2 Craft, where the setting is silently ignored
-        // and the dump would come out plain). Rejecting at the settings level
-        // keeps unrestorable backups from piling up as generations while
+        // (and custom on pre-5.2 Craft, which lacks the per-run restore-format
+        // control needed to dispatch pg_restore). Rejecting at the settings
+        // level keeps unrestorable backups from piling up as generations while
         // retention deletes the older, restorable ones
         return $format;
     }
@@ -78,7 +78,7 @@ final class CraftDatabaseDumper implements DatabaseDumper
             throw new \RuntimeException(self::unsupportedFormatMessage($unsupported));
         }
 
-        $fmt = self::resolvedBackupFormat() === 'custom' ? DumpFormat::Custom : DumpFormat::Plain;
+        $fmt = DumpFormat::fromResolved(self::resolvedBackupFormat());
         $path = rtrim($targetDir, '/') . '/dump-' . date('YmdHis') . $fmt->extension();
         try {
             \Craft::$app->getDb()->backupTo($path);
