@@ -38,6 +38,7 @@ final class RestoreController extends Controller
         $catalog = $factory->catalog();
         $entry = $catalog->get($runId);
         $info = \Craft::$app->getInfo();
+        $fmt = self::entryFormat($entry->dumpFormat);
 
         // The pre-restore rollback dump is taken under the *currently configured*
         // backupCommandFormat. tar/directory (or custom on pre-5.2 Craft) would
@@ -46,6 +47,18 @@ final class RestoreController extends Controller
         $unsupportedFormat = CraftDatabaseDumper::unsupportedBackupFormat();
         if ($unsupportedFormat !== null) {
             $this->stderr(CraftDatabaseDumper::unsupportedFormatMessage($unsupportedFormat) . "\n", Console::FG_RED);
+            return ExitCode::UNSPECIFIED_ERROR;
+        }
+
+        // Craft dispatches pg_restore only through its *default* restore command
+        // (Connection::restore() bypasses the format switch when restoreCommand is
+        // a string), so a custom backup would be piped into whatever command the
+        // override names — refuse instead
+        if ($fmt === DumpFormat::Custom
+            && \Craft::$app->getDb()->getIsPgsql()
+            && is_string(\Craft::$app->getConfig()->getGeneral()->restoreCommand)
+        ) {
+            $this->stderr("Restoring a custom-format backup requires Craft's default restore command (pg_restore dispatch), but the restoreCommand config setting is overridden with a string in this environment.\n", Console::FG_RED);
             return ExitCode::UNSPECIFIED_ERROR;
         }
 
@@ -105,7 +118,6 @@ final class RestoreController extends Controller
         $work = $factory->workDir();
         $maintenanceEnabled = false;
         $keepMaintenance = false;
-        $fmt = self::entryFormat($entry->dumpFormat);
         $zipPath = $work . "/restore-{$runId}.zip";
         $dumpPath = $work . "/restore-{$runId}" . $fmt->extension();
 
