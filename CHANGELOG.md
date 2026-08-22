@@ -4,7 +4,7 @@
 
 ### Added
 - PostgreSQL `backupCommandFormat = 'custom'` support: dumps are verified to carry the pg_dump custom-archive magic before the run commits, stored uncompressed inside the archive (custom archives are already compressed), recorded as `dumpFormat` in catalog manifests, and restored through `pg_restore` — including the automatic rollback path, which sniffs the rollback dump's actual content to pick the restore binary. The pre-dump rejection still applies to `tar`/`directory` and to `custom` on Craft versions below 5.2 (where Craft silently ignores the setting).
-- `offsite/restore/db` refuses to start when the currently configured `backupCommandFormat` is one the rollback path cannot dispatch (`tar`/`directory`, or `custom` on Craft < 5.2), since the pre-restore rollback dump would be taken in a format the automatic rollback could not restore. It also refuses when restores cannot run at all (`restoreCommand = false`) or when a custom backup — or a custom rollback dump — would bypass the pg_restore dispatch (a `restoreCommand` override, string or Closure), and verifies the rollback dump's actual content before the destructive import — a `backupCommand` override producing something that is neither plain SQL nor a custom archive (tar, empty, corrupt) aborts the restore with the database untouched.
+- `offsite/restore/db` refuses to start when the currently configured `backupCommandFormat` is one the rollback path cannot dispatch (`tar`/`directory`, or `custom` on Craft < 5.2), since the pre-restore rollback dump would be taken in a format the automatic rollback could not restore. It also refuses when restores cannot run at all (`restoreCommand = false`) or when a custom backup — or a custom rollback dump — would bypass the pg_restore dispatch (a `restoreCommand` override, string or Closure), and runs the rollback dump through the same content sanity check as the backup path before the destructive import — output that fails the expected format's check (e.g. an empty file) aborts the restore with the database untouched.
 - Control panel backup jobs now show phase-based progress for database dumping, archive creation, upload, catalog publishing, retention, and resumed-job finalization.
 - A queued backup that is interrupted by a worker death (server reboot, deploy, queue TTR kill) can no longer turn into two backups. The job now carries a fixed run ID, and a re-delivered attempt whose backup was already committed just finishes the bookkeeping (notifications, heartbeat) instead of taking a second backup. Such a job is retried once; note that Craft only re-delivers it after its reservation expires, which takes up to the 24-hour TTR, so the next scheduled run usually gets there first.
 
@@ -14,7 +14,7 @@
 - The local run cache never demotes a committed run when a re-delivered attempt fails afterwards, and a resumed run is now recorded under the original backup's timestamp and size instead of the retry's.
 
 ### Compatibility
-- Backups taken before this release (plain dumps whose manifest has no `dumpFormat` field) restore exactly as before.
+- Backups taken before this release (plain dumps whose manifest has no `dumpFormat` field) are still read as plain and restored through the same `backup.sql` path; the new restore preflight rejections above apply to those restores as well.
 
 ## 1.0.1 - 2026-07-22
 
