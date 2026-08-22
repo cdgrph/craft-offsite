@@ -45,7 +45,7 @@ If the import itself fails, Offsite automatically restores the pre-restore dump,
 php craft db/restore --format=custom storage/runtime/offsite/work/pre-restore-20260712143000.sql
 ```
 
-(The `--format` flag requires Craft 5.2+. On Craft 5.0/5.1 this mismatch can only arise from a string `backupCommand` override — rename the file to a `.dump` extension before restoring, or run `pg_restore` against it directly.)
+(The `--format` flag requires Craft 5.2+. On Craft 5.0/5.1 this mismatch can only arise from a `backupCommand` override (string or Closure) — rename the file to a `.dump` extension before restoring, or run `pg_restore` against it directly.)
 
 ## Disaster recovery runbook (new server, nothing local)
 
