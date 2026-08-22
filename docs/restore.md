@@ -42,8 +42,10 @@
 If the import itself fails, Offsite automatically restores the pre-restore dump, dispatching `pg_restore` or `psql` according to the rollback file's actual content. If you need to roll back *after* a successful restore, the pre-restore dump path was printed at the end of the run (kept under `storage/runtime/offsite/work/`). The file is named after the *configured* format at restore time (`.sql` / `.dump`), but a `backupCommand` override can diverge the actual content from that name. Offsite's own rollback dispatch always sniffs the content; Craft's `db/restore` command does not reliably do so (its MIME sniff falls back to the file extension for `application/octet-stream` data, which is exactly what a custom archive sniffs as) — if the extension looks wrong for the content, pass the format explicitly:
 
 ```bash
-php craft db/restore storage/runtime/offsite/work/pre-restore-20260712143000.sql
+php craft db/restore --format=custom storage/runtime/offsite/work/pre-restore-20260712143000.sql
 ```
+
+(The `--format` flag requires Craft 5.2+. On Craft 5.0/5.1 this mismatch can only arise from a `backupCommand` override (string or Closure), and those versions have no restore-format control at all — run `pg_restore` against the file directly.)
 
 ## Disaster recovery runbook (new server, nothing local)
 
