@@ -176,7 +176,17 @@ final class RestoreController extends Controller
             // backupCommand override can produce something that is neither a plain
             // SQL dump nor a custom archive (tar, empty, corrupt). Refuse before
             // the destructive import — the current DB is still untouched here
-            CraftDatabaseDumper::assertDumpLooksLike($rollback, CraftDatabaseDumper::detectDumpFormat($rollback));
+            $rollbackFmt = CraftDatabaseDumper::detectDumpFormat($rollback);
+            CraftDatabaseDumper::assertDumpLooksLike($rollback, $rollbackFmt);
+            // A custom rollback dump would need pg_restore, which a string
+            // restoreCommand override bypasses — the automatic rollback could
+            // not run, so never start the destructive import
+            if ($rollbackFmt === DumpFormat::Custom
+                && \Craft::$app->getDb()->getIsPgsql()
+                && is_string(\Craft::$app->getConfig()->getGeneral()->restoreCommand)
+            ) {
+                throw new \RuntimeException('The pre-restore rollback dump is a custom archive, but the restoreCommand config setting is overridden with a string — the automatic rollback could not dispatch pg_restore. Remove the override before restoring.');
+            }
 
             // 4. import (restoreFormat was already set in step 1)
             $lock->progress('import');
@@ -190,12 +200,11 @@ final class RestoreController extends Controller
             } catch (\Throwable $e) {
                 $this->stderr("Restore failed: {$e->getMessage()}\nRolling back from {$rollback}...\n", Console::FG_RED);
                 try {
-                    // Sniff the rollback file's actual format: it was produced under
-                    // whatever backupCommandFormat is active now, which may differ
-                    // from the imported backup. Setting the format explicitly (rather
-                    // than reusing the main import's) is what keeps a plain rollback
-                    // dump off pg_restore on a custom-format site
-                    self::applyRestoreFormat(CraftDatabaseDumper::detectDumpFormat($rollback));
+                    // The rollback file's sniffed format (which may differ from the
+                    // imported backup's) drives the dispatch. Setting the format
+                    // explicitly (rather than reusing the main import's) is what
+                    // keeps a plain rollback dump off pg_restore on a custom site
+                    self::applyRestoreFormat($rollbackFmt);
                     \Craft::$app->getDb()->restore($rollback);
                 } catch (\Throwable $rollbackError) {
                     // Never expose a partially imported DB: if even the rollback fails,
