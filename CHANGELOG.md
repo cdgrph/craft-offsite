@@ -9,7 +9,6 @@
 - A queued backup interrupted by a worker death can no longer turn into two backups: the job carries a fixed run ID, and a re-delivered attempt whose backup already committed just finishes the bookkeeping. Craft only re-delivers it after the 24-hour reservation expires, so the next scheduled run usually gets there first.
 
 ### Changed
-- `DatabaseDumper::dump()` now returns a `DumpResult` value object (dump path + format) instead of a bare path.
 - The queue TTR (24 hours) is now declared by the backup job itself.
 - The local run cache never demotes a committed run when a re-delivered attempt fails afterwards; a resumed run is recorded under the original backup's timestamp and size.
 
