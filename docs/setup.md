@@ -114,17 +114,14 @@ retry buys you: an interrupted backup can never turn into two backups.
 Failures the backup itself reports (S3 errors, invalid settings, a busy lock)
 are never retried — the next scheduled run is the recovery path.
 
-**On the default database queue, the retry is not prompt.** A dying worker
-leaves its job reserved, and the default queue driver only re-runs a reserved
-job once the reservation expires — which takes as long as the job's TTR.
-Offsite sets a 24-hour TTR (a database dump must be allowed to take as long as
-it needs), so a backup interrupted by a reboot is retried up to a day later on
-the default queue. The one exception is a job that hits the TTR limit itself:
+**The retry is not prompt.** A dying worker leaves its job reserved, and Craft
+only re-runs a reserved job once the reservation expires — which takes as long
+as the job's TTR. Offsite sets a 24-hour TTR (a database dump must be allowed
+to take as long as it needs), so a backup interrupted by a reboot is retried up
+to a day later. The one exception is a job that hits the TTR limit itself:
 there the reservation expires at the same moment, so the retry follows
-immediately. Other queue drivers can behave differently — some (for example
-AMQP) re-enqueue a retried job immediately instead of waiting out the TTR.
-Treat the retry as a backstop, not as recovery — **your scheduled cron run is
-what actually gets you a fresh backup the next day.** Cron runs
+immediately. Treat the retry as a backstop, not as recovery — **your scheduled
+cron run is what actually gets you a fresh backup the next day.** Cron runs
 (`craft offsite/backup/db`) are not queued and never retry.
 
 A dead worker cannot send a failure ping, so a heartbeat check is the only
