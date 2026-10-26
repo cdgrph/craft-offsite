@@ -22,6 +22,9 @@ use PHPUnit\Framework\TestCase;
  */
 final class BackupCommandFormatTest extends TestCase
 {
+    /** Smallest plain dump that passes both content checks (statement + completion marker) */
+    private const PLAIN_DUMP = "-- fake dump\nSET x = 1;\n-- Dump completed on 2026-10-26 12:00:00\n";
+
     private string $configDir;
     private string $workDir;
     private mixed $savedServerEnv = null;
@@ -176,7 +179,7 @@ final class BackupCommandFormatTest extends TestCase
 
     public function testPgsqlDefaultNullDumpsPlain(): void
     {
-        $db = new FakeDbConnection(true, $this->schemaWithFormatSupport(), "-- fake dump\nSET x = 1;\n");
+        $db = new FakeDbConnection(true, $this->schemaWithFormatSupport(), self::PLAIN_DUMP);
         $this->bootApp('[]', $db);
 
         $result = (new CraftDatabaseDumper())->dump($this->workDir);
@@ -185,10 +188,25 @@ final class BackupCommandFormatTest extends TestCase
         self::assertSame('sql', pathinfo($result->path, PATHINFO_EXTENSION));
     }
 
+    public function testPlainDumpWithoutCompletionMarkerIsRejectedAndRemoved(): void
+    {
+        // A dump cut short (or produced without comments) must never be committed
+        $db = new FakeDbConnection(true, $this->schemaWithFormatSupport(), "-- fake dump\nSET x = 1;\n");
+        $this->bootApp('[]', $db);
+
+        try {
+            (new CraftDatabaseDumper())->dump($this->workDir);
+            self::fail('expected RuntimeException for a dump without the completion marker');
+        } catch (\RuntimeException $e) {
+            self::assertStringContainsString('not a complete plain SQL dump', $e->getMessage());
+        }
+        self::assertSame([], glob($this->workDir . '/dump-*') ?: [], 'a rejected dump must not stay in the work dir');
+    }
+
     public function testMysqlIgnoresBackupCommandFormat(): void
     {
         // backupCommandFormat is a PostgreSQL-only Craft setting (no-op on MySQL)
-        $db = new FakeDbConnection(false, null, "-- fake dump\nSET x = 1;\n");
+        $db = new FakeDbConnection(false, null, self::PLAIN_DUMP);
         $this->bootApp("['backupCommandFormat' => 'custom']", $db);
 
         $result = (new CraftDatabaseDumper())->dump($this->workDir);

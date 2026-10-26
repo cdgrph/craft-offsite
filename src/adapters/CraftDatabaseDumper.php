@@ -13,6 +13,12 @@ use cdgrph\offsite\engine\DumpResult;
  */
 final class CraftDatabaseDumper implements DatabaseDumper
 {
+    /** Bytes read from the start of a dump for the shape check */
+    private const HEAD_BYTES = 4096;
+
+    /** Bytes read from the end of a dump for the completion check */
+    private const TAIL_BYTES = 4096;
+
     /**
      * The backup format Craft will actually apply to this request: null on
      * MySQL (PostgreSQL-only setting). Resolution is schema-first where the
@@ -94,6 +100,7 @@ final class CraftDatabaseDumper implements DatabaseDumper
         }
         try {
             self::assertDumpLooksLike($path, $fmt);
+            self::assertDumpComplete($path, $fmt);
         } catch (\RuntimeException $e) {
             @unlink($path);
             throw $e;
@@ -121,20 +128,59 @@ final class CraftDatabaseDumper implements DatabaseDumper
      */
     public static function assertDumpLooksLike(string $path, DumpFormat $format): void
     {
-        $head = (string)file_get_contents($path, false, null, 0, 512);
+        $head = (string)file_get_contents($path, false, null, 0, self::HEAD_BYTES);
         if ($format === DumpFormat::Custom) {
             if (!str_starts_with($head, 'PGDMP')) {
                 throw new \RuntimeException('Dump output is not a pg_dump custom archive (missing PGDMP magic). Check backupCommandFormat / backupCommand.');
             }
             return;
         }
-        // A pg_dump custom archive contains strings like SET inside its binary and can
-        // slip past the heuristic, so the PGDMP magic is rejected explicitly
+        // Comment lines alone never qualify: psql runs a comment-only file as a
+        // successful no-op, which would let an empty rollback point "restore".
+        // A pg_dump custom archive contains strings like SET inside its binary and
+        // can slip past the statement match, so the PGDMP magic is rejected explicitly
+        $statements = (string)preg_replace('/^[ \t]*--.*$/m', '', $head);
         $notSql = str_starts_with($head, 'PGDMP')
-            || $head === ''
-            || (!str_contains($head, '--') && stripos($head, 'SET') === false && stripos($head, 'CREATE') === false);
+            || !preg_match('/\b(?:SET|CREATE|INSERT|DROP)\b/i', $statements);
         if ($notSql) {
             throw new \RuntimeException('Backup output is not a plain SQL dump. Check backupCommandFormat / backupCommand.');
+        }
+    }
+
+    /**
+     * Verifies that a plain SQL dump ran to completion: mysqldump/mariadb-dump
+     * end with "-- Dump completed", pg_dump with "-- PostgreSQL database dump
+     * complete". Only the last marker counts, and nothing but blank lines,
+     * comments and pg_dump's \unrestrict line may follow it — Craft's MySQL
+     * command appends a second mysqldump run, so an earlier marker only proves
+     * the schema part finished. Custom archives are not covered.
+     *
+     * Applies to dumps produced in this environment (backup run, pre-restore
+     * rollback point), not to downloaded backups: the catalog's SHA-256 pins
+     * those to the file their backup run uploaded, and requiring the marker
+     * there would refuse older backups taken without it.
+     */
+    public static function assertDumpComplete(string $path, DumpFormat $format): void
+    {
+        if ($format === DumpFormat::Custom) {
+            return;
+        }
+        $size = (int)filesize($path);
+        $tail = (string)file_get_contents($path, false, null, max(0, $size - self::TAIL_BYTES));
+        $complete = false;
+        if (preg_match_all('/^-- (?:Dump completed|PostgreSQL database dump complete)\b.*$/m', $tail, $m, PREG_OFFSET_CAPTURE)) {
+            [$marker, $offset] = end($m[0]);
+            $complete = true;
+            foreach (preg_split('/\R/', substr($tail, $offset + strlen($marker))) ?: [] as $line) {
+                $line = trim($line);
+                if ($line !== '' && !str_starts_with($line, '--') && !str_starts_with($line, '\\unrestrict ')) {
+                    $complete = false;
+                    break;
+                }
+            }
+        }
+        if (!$complete) {
+            throw new \RuntimeException('Backup output is not a complete plain SQL dump: the completion marker that mysqldump and pg_dump write at the end is missing. The dump may have been cut short, or a backupCommand override strips comments (--skip-comments / --compact) — keep comments so the dump can be verified.');
         }
     }
 

@@ -1,5 +1,16 @@
 # Release Notes for Offsite
 
+## Unreleased
+
+### Changed
+- Plain SQL dumps must now end with the dump tool's completion marker (`-- Dump completed` for mysqldump / mariadb-dump, `-- PostgreSQL database dump complete` for pg_dump); a dump without it fails the backup run. The check also covers the pre-restore rollback dump taken by `offsite/restore/db`.
+- A plain SQL dump made only of comment lines is now rejected, for backup runs, restores and the pre-restore rollback dump alike.
+- Failure notifications now name dump content problems ("Database dump incomplete" / "Database dump has an unexpected format") instead of reporting an unexpected error.
+
+### Compatibility
+- If you override `backupCommand`, keep comments in the dump output: `--skip-comments` and `--compact` remove the completion marker, so every backup run fails after updating.
+- Restoring a downloaded backup does not require the completion marker, so backups taken before this release (including those from a `backupCommand` override without comments) still restore.
+
 ## 1.1.0 - 2026-08-23
 
 ### Added

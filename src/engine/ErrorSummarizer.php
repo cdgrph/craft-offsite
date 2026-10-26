@@ -19,6 +19,8 @@ final class ErrorSummarizer
         '/cURL error 60/i' => 'TLS certificate error',
         '/cURL error/i' => 'Network error',
         '/SlowDown|ServiceUnavailable/i' => 'S3 temporarily unavailable',
+        '/not a complete plain SQL dump/' => 'Database dump incomplete (check backupCommand)',
+        '/not a plain SQL dump|not a pg_dump custom archive/' => 'Database dump has an unexpected format (check backupCommand)',
     ];
 
     public static function summarize(string $reason): string

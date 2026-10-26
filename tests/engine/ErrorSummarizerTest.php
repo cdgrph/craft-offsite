@@ -66,6 +66,18 @@ final class ErrorSummarizerTest extends TestCase
             'SlowDown (client): Please reduce your request rate',
             'S3 temporarily unavailable',
         ];
+        yield 'incomplete dump' => [
+            'Backup output is not a complete plain SQL dump: the completion marker is missing.',
+            'Database dump incomplete (check backupCommand)',
+        ];
+        yield 'plain dump shape' => [
+            'Backup output is not a plain SQL dump. Check backupCommandFormat / backupCommand.',
+            'Database dump has an unexpected format (check backupCommand)',
+        ];
+        yield 'custom dump shape' => [
+            'Dump output is not a pg_dump custom archive (missing PGDMP magic). Check backupCommandFormat / backupCommand.',
+            'Database dump has an unexpected format (check backupCommand)',
+        ];
         yield 'generic S3 operation' => [
             'Error executing "GetObject" on "https://bucket.s3.amazonaws.com/key"; something went wrong',
             'S3 GetObject failed',
