@@ -166,6 +166,41 @@ final class DumpContentCheckTest extends TestCase
         );
     }
 
+    public function testMarkerTextInCopyDataIsNotTheFooter(): void
+    {
+        // COPY writes a text first column verbatim, so a row can start with the
+        // marker text; a dump cut right after such a row must not pass
+        $full = self::pgDumpPlain(false);
+        $copyHeader = "FROM stdin;\n";
+        $copyStart = (int)strpos($full, $copyHeader) + strlen($copyHeader);
+        $rows = ["-- PostgreSQL database dump complete\n", "-- PostgreSQL database dump complete\t42\n", "-- Dump completed on 2026-10-26 12:00:00\t1\n"];
+        foreach ($rows as $row) {
+            $path = $this->write(substr($full, 0, $copyStart) . $row);
+            $this->assertRejected(
+                fn() => CraftDatabaseDumper::assertDumpComplete($path, DumpFormat::Plain),
+                'not a complete plain SQL dump',
+            );
+        }
+    }
+
+    public function testMysqldumpMarkerWithoutDumpDatePasses(): void
+    {
+        // --skip-dump-date writes the marker without the timestamp
+        $path = $this->write(str_replace(' on 2026-10-26 12:00:00', '', self::mysqldumpTwoStep()));
+        CraftDatabaseDumper::assertDumpComplete($path, DumpFormat::Plain);
+        $this->addToAssertionCount(1);
+    }
+
+    public function testNulPaddingAfterTheMarkerIsRejected(): void
+    {
+        // Archive padding is not part of an SQL dump
+        $path = $this->write(self::pgDumpPlain(true) . str_repeat("\0", 1024));
+        $this->assertRejected(
+            fn() => CraftDatabaseDumper::assertDumpComplete($path, DumpFormat::Plain),
+            'not a complete plain SQL dump',
+        );
+    }
+
     public function testSqlAfterTheMarkerIsRejected(): void
     {
         $path = $this->write(self::pgDumpPlain(false) . "CREATE TABLE public.extra (id integer);\n");
@@ -215,6 +250,37 @@ final class DumpContentCheckTest extends TestCase
     {
         // A plain block comment is not a statement, even when it mentions SET
         $path = $this->write("/* SET up by a wrapper script; CREATE nothing */\n-- Dump completed on 2026-10-26 12:00:00\n");
+        $this->assertRejected(
+            fn() => CraftDatabaseDumper::assertDumpLooksLike($path, DumpFormat::Plain),
+            'not a plain SQL dump',
+        );
+    }
+
+    public function testKeywordOnlyInCommentsAfterMetaCommandIsRejected(): void
+    {
+        // pg_dump-like framing with no executable statement in between
+        $path = $this->write("\\restrict AbC\n\n-- CREATE skipped by the wrapper\n--\n-- PostgreSQL database dump complete\n--\n\n\\unrestrict AbC\n");
+        $this->assertRejected(
+            fn() => CraftDatabaseDumper::assertDumpLooksLike($path, DumpFormat::Plain),
+            'not a plain SQL dump',
+        );
+    }
+
+    public function testNestedBlockCommentIsSkippedAsAWhole(): void
+    {
+        // PostgreSQL nests block comments: the SET below is still inside the outer one
+        $path = $this->write("/* outer /* inner */ SET statement_timeout = 0; */\n");
+        $this->assertRejected(
+            fn() => CraftDatabaseDumper::assertDumpLooksLike($path, DumpFormat::Plain),
+            'not a plain SQL dump',
+        );
+    }
+
+    public function testDumpWrappedInATarArchiveIsRejected(): void
+    {
+        // A tar header (file name + NUL padding) comes before the SQL it wraps
+        $tar = str_pad('backup.sql', 512, "\0") . self::pgDumpPlain(true) . str_repeat("\0", 1024);
+        $path = $this->write($tar);
         $this->assertRejected(
             fn() => CraftDatabaseDumper::assertDumpLooksLike($path, DumpFormat::Plain),
             'not a plain SQL dump',

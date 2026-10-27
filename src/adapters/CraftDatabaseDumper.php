@@ -135,51 +135,89 @@ final class CraftDatabaseDumper implements DatabaseDumper
             }
             return;
         }
-        // A pg_dump custom archive contains strings like SET inside its binary and
-        // can slip past the statement match, so the PGDMP magic is rejected explicitly
-        $notSql = str_starts_with($head, 'PGDMP')
-            || !preg_match('/\b(?:SET|CREATE|INSERT|DROP)\b/i', self::skipLeadingComments($head));
-        if ($notSql) {
+        if (!self::startsWithStatement($head)) {
             throw new \RuntimeException('Backup output is not a plain SQL dump. Check backupCommandFormat / backupCommand.');
         }
     }
 
     /**
-     * Returns $sql from its first non-comment content on, or '' when there is
-     * none. Comments alone never qualify: psql runs a comment-only file as a
-     * successful no-op, which would let an empty rollback point "restore".
-     * Skips whitespace, line comments and plain block comments (closed or cut
-     * off); MySQL /*! *\/ and MariaDB /*M! *\/ comments are executed, so they
-     * count as content.
-     * Only the leading run is skipped — a "/*" inside row data further down
-     * must not swallow the statements before it.
+     * Whether the first content after leading comments is the start of an SQL
+     * statement. Comments alone never qualify: psql runs a comment-only file
+     * as a successful no-op, which would let an empty rollback point
+     * "restore". Skips whitespace, line comments, psql meta-command lines
+     * (pg_dump's \restrict) and plain block comments — nested as PostgreSQL
+     * nests them, closed or cut off; MySQL /*! *\/ and MariaDB /*M! *\/
+     * comments are executed, so they count as a statement start.
+     *
+     * Only the first content decides: a "/*" inside row data further down
+     * must not swallow earlier statements, and wrapped output (a tar header,
+     * a pg_dump custom archive — which carries SET text inside its binary)
+     * must not pass on SQL text it contains.
      */
-    private static function skipLeadingComments(string $sql): string
+    private static function startsWithStatement(string $sql): bool
     {
         $len = strlen($sql);
         $pos = 0;
         while (($pos += strspn($sql, " \t\r\n", $pos)) < $len) {
-            if (substr_compare($sql, '--', $pos, 2) === 0) {
+            if (substr_compare($sql, '--', $pos, 2) === 0 || $sql[$pos] === '\\') {
                 $end = strpos($sql, "\n", $pos);
                 $pos = $end === false ? $len : $end + 1;
             } elseif (substr_compare($sql, '/*', $pos, 2) === 0 && !preg_match('/\G\/\*M?!/', $sql, $m, 0, $pos)) {
-                $end = strpos($sql, '*/', $pos + 2);
-                $pos = $end === false ? $len : $end + 2;
+                $pos = self::endOfBlockComment($sql, $pos);
             } else {
-                return substr($sql, $pos);
+                return (bool)preg_match('/\G(?:\/\*M?!|(?:SET|CREATE|INSERT|DROP|LOCK|USE|BEGIN|START)\b)/i', $sql, $m, 0, $pos);
             }
         }
-        return '';
+        return false;
+    }
+
+    /**
+     * Offset just past the block comment opening at $pos, counting nested
+     * openers like PostgreSQL does ($len when it never closes). MySQL ends a
+     * comment at the first closer, so there a comment that only looks nested
+     * is skipped too far — which can only turn an accept into a reject.
+     */
+    private static function endOfBlockComment(string $sql, int $pos): int
+    {
+        $len = strlen($sql);
+        $depth = 0;
+        $close = -1;
+        while ($pos < $len) {
+            $open = strpos($sql, '/*', $pos);
+            // Reuse the closer until it is consumed: rescanning for it on every
+            // opener would make a run of openers quadratic
+            if ($close !== false && $close < $pos) {
+                $close = strpos($sql, '*/', $pos);
+            }
+            if ($close === false) {
+                return $len;
+            }
+            if ($open !== false && $open < $close) {
+                $depth++;
+                $pos = $open + 2;
+                continue;
+            }
+            $pos = $close + 2;
+            if (--$depth === 0) {
+                return $pos;
+            }
+        }
+        return $len;
     }
 
     /**
      * Verifies that a plain SQL dump ran to completion: mysqldump/mariadb-dump
-     * end with "-- Dump completed", pg_dump with "-- PostgreSQL database dump
-     * complete". Only the last marker counts, and nothing but blank lines,
-     * bare "--" lines and pg_dump's \unrestrict line may follow it — Craft's
-     * MySQL command appends a second mysqldump run, so an earlier marker only
-     * proves the schema part finished, and a run that stopped after writing its
-     * comment header must not pass. Custom archives are not covered.
+     * end with a "-- Dump completed [on <date>]" line, pg_dump with the
+     * "--" / "-- PostgreSQL database dump complete" / "--" block. The footer
+     * must match whole lines, so COPY rows that merely start with the marker
+     * text do not count. Only the last footer counts, and nothing but blank
+     * lines, bare "--" lines and pg_dump's \unrestrict line may follow it —
+     * Craft's MySQL command appends a second mysqldump run, so an earlier
+     * footer only proves the schema part finished, and a run that stopped
+     * after writing its comment header must not pass. Custom archives are not
+     * covered. COPY blocks are not parsed: rows of a single text column that
+     * reproduce the pg footer lines exactly, with the dump cut right after
+     * them, would still pass.
      *
      * Applies to dumps produced in this environment (backup run, pre-restore
      * rollback point), not to downloaded backups: the catalog's SHA-256 pins
@@ -194,11 +232,12 @@ final class CraftDatabaseDumper implements DatabaseDumper
         $size = (int)filesize($path);
         $tail = (string)file_get_contents($path, false, null, max(0, $size - self::TAIL_BYTES));
         $complete = false;
-        if (preg_match_all('/^-- (?:Dump completed|PostgreSQL database dump complete)\b.*$/m', $tail, $m, PREG_OFFSET_CAPTURE)) {
+        $footer = '/^(?:-- Dump completed(?: on \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})?|--\r?\n-- PostgreSQL database dump complete\r?\n--)\r?$/m';
+        if (preg_match_all($footer, $tail, $m, PREG_OFFSET_CAPTURE)) {
             [$marker, $offset] = end($m[0]);
             $complete = true;
             foreach (preg_split('/\R/', substr($tail, $offset + strlen($marker))) ?: [] as $line) {
-                $line = trim($line);
+                $line = trim($line, " \t");
                 if ($line !== '' && $line !== '--' && !str_starts_with($line, '\\unrestrict ')) {
                     $complete = false;
                     break;
