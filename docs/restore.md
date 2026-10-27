@@ -31,7 +31,7 @@
    php craft offsite/restore/db 20260712-030000-Ab3dEf --execute
    ```
 
-   What happens, in order: the archive is downloaded and its **SHA-256 verified against the catalog**, the zip's CRC is checked, the dump is sanity-checked against its recorded format (plain SQL or pg_dump custom archive) — only after all of that does anything destructive begin. Maintenance mode is enabled, a **pre-restore dump** of the current database is taken as a rollback point, the import runs (via `pg_restore` for custom-format backups), caches are flushed, and the schema version is compared against the catalog entry.
+   What happens, in order: the archive is downloaded and its **SHA-256 verified against the catalog**, the zip's CRC is checked, the dump is sanity-checked against its recorded format (plain SQL or pg_dump custom archive) — only after all of that does anything destructive begin. Maintenance mode is enabled, a **pre-restore dump** of the current database is taken as a rollback point and checked the same way as a backup run's dump (for plain SQL, including the completion marker — see [Dump content checks](setup.md#dump-content-checks)), the import runs (via `pg_restore` for custom-format backups), caches are flushed, and the schema version is compared against the catalog entry.
 
    > **Required**: block external traffic at the web-server/load-balancer level while restoring. Craft stores the maintenance flag in the database itself, so the flag is briefly overwritten by the imported data during the import (the same limitation applies to Craft's own `db/restore`). Offsite re-enables the flag immediately after the import, but external blocking is the only complete guarantee against serving a partially-imported database.
 
