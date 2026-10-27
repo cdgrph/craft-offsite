@@ -199,7 +199,7 @@ final class RestoreController extends Controller
             // the destructive import — the current DB is still untouched here
             $rollbackFmt = CraftDatabaseDumper::detectDumpFormat($rollback);
             CraftDatabaseDumper::assertDumpLooksLike($rollback, $rollbackFmt);
-            CraftDatabaseDumper::assertDumpComplete($rollback, $rollbackFmt);
+            CraftDatabaseDumper::assertDumpComplete($rollback, $rollbackFmt, \Craft::$app->getDb()->getIsPgsql());
             // The rollback must also be *dispatchable* — verify now, before the
             // import: if this check only lived in the failure handler, an
             // undispatchable rollback (override, pre-5.2, driver mismatch) would

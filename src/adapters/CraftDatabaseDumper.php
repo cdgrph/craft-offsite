@@ -100,7 +100,7 @@ final class CraftDatabaseDumper implements DatabaseDumper
         }
         try {
             self::assertDumpLooksLike($path, $fmt);
-            self::assertDumpComplete($path, $fmt);
+            self::assertDumpComplete($path, $fmt, \Craft::$app->getDb()->getIsPgsql());
         } catch (\RuntimeException $e) {
             @unlink($path);
             throw $e;
@@ -135,7 +135,9 @@ final class CraftDatabaseDumper implements DatabaseDumper
             }
             return;
         }
-        if (!self::startsWithStatement($head)) {
+        // mysqldump and pg_dump escape NUL in row data, so a raw NUL means
+        // binary output — a tar header's padding, a pg_dump custom archive
+        if (str_contains($head, "\0") || !self::startsWithStatement($head)) {
             throw new \RuntimeException('Backup output is not a plain SQL dump. Check backupCommandFormat / backupCommand.');
         }
     }
@@ -150,9 +152,8 @@ final class CraftDatabaseDumper implements DatabaseDumper
      * comments are executed, so they count as a statement start.
      *
      * Only the first content decides: a "/*" inside row data further down
-     * must not swallow earlier statements, and wrapped output (a tar header,
-     * a pg_dump custom archive — which carries SET text inside its binary)
-     * must not pass on SQL text it contains.
+     * must not swallow earlier statements, and output wrapped in something
+     * else must not pass on SQL text it contains.
      */
     private static function startsWithStatement(string $sql): bool
     {
@@ -208,9 +209,12 @@ final class CraftDatabaseDumper implements DatabaseDumper
     /**
      * Verifies that a plain SQL dump ran to completion: mysqldump/mariadb-dump
      * end with a "-- Dump completed [on <date>]" line, pg_dump with the
-     * "--" / "-- PostgreSQL database dump complete" / "--" block. The footer
-     * must match whole lines, so COPY rows that merely start with the marker
-     * text do not count. Only the last footer counts, and nothing but blank
+     * "--" / "-- PostgreSQL database dump complete" / "--" block. Only the
+     * footer of the current driver's dump tool counts, and it must match
+     * whole lines, so COPY rows that merely start with the marker text, or
+     * reproduce the other tool's one-line footer, do not count. MySQL row
+     * data cannot start a line (mysqldump escapes newlines inside values).
+     * Only the last footer counts, and nothing but blank
      * lines, bare "--" lines and pg_dump's \unrestrict line may follow it —
      * Craft's MySQL command appends a second mysqldump run, so an earlier
      * footer only proves the schema part finished, and a run that stopped
@@ -224,7 +228,7 @@ final class CraftDatabaseDumper implements DatabaseDumper
      * those to the file their backup run uploaded, and requiring the marker
      * there would refuse older backups taken without it.
      */
-    public static function assertDumpComplete(string $path, DumpFormat $format): void
+    public static function assertDumpComplete(string $path, DumpFormat $format, bool $pgsql): void
     {
         if ($format === DumpFormat::Custom) {
             return;
@@ -232,7 +236,9 @@ final class CraftDatabaseDumper implements DatabaseDumper
         $size = (int)filesize($path);
         $tail = (string)file_get_contents($path, false, null, max(0, $size - self::TAIL_BYTES));
         $complete = false;
-        $footer = '/^(?:-- Dump completed(?: on \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})?|--\r?\n-- PostgreSQL database dump complete\r?\n--)\r?$/m';
+        $footer = $pgsql
+            ? '/^--\r?\n-- PostgreSQL database dump complete\r?\n--\r?$/m'
+            : '/^-- Dump completed(?: on .*)?$/m';
         if (preg_match_all($footer, $tail, $m, PREG_OFFSET_CAPTURE)) {
             [$marker, $offset] = end($m[0]);
             $complete = true;

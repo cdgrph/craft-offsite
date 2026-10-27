@@ -83,7 +83,7 @@ final class DumpContentCheckTest extends TestCase
     {
         $path = $this->write(self::mysqldumpTwoStep());
         CraftDatabaseDumper::assertDumpLooksLike($path, DumpFormat::Plain);
-        CraftDatabaseDumper::assertDumpComplete($path, DumpFormat::Plain);
+        CraftDatabaseDumper::assertDumpComplete($path, DumpFormat::Plain, pgsql: false);
         $this->addToAssertionCount(1);
     }
 
@@ -92,7 +92,7 @@ final class DumpContentCheckTest extends TestCase
         // pg_dump releases since August 2025 write a \unrestrict line after the marker
         $path = $this->write(self::pgDumpPlain(true));
         CraftDatabaseDumper::assertDumpLooksLike($path, DumpFormat::Plain);
-        CraftDatabaseDumper::assertDumpComplete($path, DumpFormat::Plain);
+        CraftDatabaseDumper::assertDumpComplete($path, DumpFormat::Plain, pgsql: true);
         $this->addToAssertionCount(1);
     }
 
@@ -100,14 +100,14 @@ final class DumpContentCheckTest extends TestCase
     {
         $path = $this->write(self::pgDumpPlain(false));
         CraftDatabaseDumper::assertDumpLooksLike($path, DumpFormat::Plain);
-        CraftDatabaseDumper::assertDumpComplete($path, DumpFormat::Plain);
+        CraftDatabaseDumper::assertDumpComplete($path, DumpFormat::Plain, pgsql: true);
         $this->addToAssertionCount(1);
     }
 
     public function testCrlfLineEndingsPass(): void
     {
         $path = $this->write(str_replace("\n", "\r\n", self::pgDumpPlain(true)));
-        CraftDatabaseDumper::assertDumpComplete($path, DumpFormat::Plain);
+        CraftDatabaseDumper::assertDumpComplete($path, DumpFormat::Plain, pgsql: true);
         $this->addToAssertionCount(1);
     }
 
@@ -115,7 +115,7 @@ final class DumpContentCheckTest extends TestCase
     {
         $rows = str_repeat("INSERT INTO `craft_info` VALUES (1);\n", 2000);
         $path = $this->write(self::mysqldumpPart($rows));
-        CraftDatabaseDumper::assertDumpComplete($path, DumpFormat::Plain);
+        CraftDatabaseDumper::assertDumpComplete($path, DumpFormat::Plain, pgsql: false);
         $this->addToAssertionCount(1);
     }
 
@@ -124,7 +124,7 @@ final class DumpContentCheckTest extends TestCase
         $full = self::pgDumpPlain(true);
         $path = $this->write(substr($full, 0, (int)strpos($full, 'COPY')));
         $this->assertRejected(
-            fn() => CraftDatabaseDumper::assertDumpComplete($path, DumpFormat::Plain),
+            fn() => CraftDatabaseDumper::assertDumpComplete($path, DumpFormat::Plain, pgsql: true),
             'not a complete plain SQL dump',
         );
     }
@@ -137,7 +137,7 @@ final class DumpContentCheckTest extends TestCase
         $data = self::mysqldumpPart("INSERT INTO `craft_info` VALUES (1);\n");
         $path = $this->write($schema . substr($data, 0, (int)strpos($data, 'INSERT') + 20));
         $this->assertRejected(
-            fn() => CraftDatabaseDumper::assertDumpComplete($path, DumpFormat::Plain),
+            fn() => CraftDatabaseDumper::assertDumpComplete($path, DumpFormat::Plain, pgsql: false),
             'not a complete plain SQL dump',
         );
     }
@@ -148,7 +148,7 @@ final class DumpContentCheckTest extends TestCase
         $path = $this->write("/*!40101 SET NAMES utf8mb4 */;\nCREATE TABLE `craft_info` (`id` int NOT NULL);\nINSERT INTO `craft_info` VALUES (1);\n");
         CraftDatabaseDumper::assertDumpLooksLike($path, DumpFormat::Plain);
         $this->assertRejected(
-            fn() => CraftDatabaseDumper::assertDumpComplete($path, DumpFormat::Plain),
+            fn() => CraftDatabaseDumper::assertDumpComplete($path, DumpFormat::Plain, pgsql: false),
             '--skip-comments',
         );
     }
@@ -161,7 +161,7 @@ final class DumpContentCheckTest extends TestCase
         $header = "-- MySQL dump 10.13  Distrib 8.0.36, for Linux (x86_64)\n--\n-- Host: db    Database: db\n";
         $path = $this->write($schema . $header);
         $this->assertRejected(
-            fn() => CraftDatabaseDumper::assertDumpComplete($path, DumpFormat::Plain),
+            fn() => CraftDatabaseDumper::assertDumpComplete($path, DumpFormat::Plain, pgsql: false),
             'not a complete plain SQL dump',
         );
     }
@@ -177,17 +177,37 @@ final class DumpContentCheckTest extends TestCase
         foreach ($rows as $row) {
             $path = $this->write(substr($full, 0, $copyStart) . $row);
             $this->assertRejected(
-                fn() => CraftDatabaseDumper::assertDumpComplete($path, DumpFormat::Plain),
+                fn() => CraftDatabaseDumper::assertDumpComplete($path, DumpFormat::Plain, pgsql: true),
                 'not a complete plain SQL dump',
             );
         }
+    }
+
+    public function testOnlyTheCurrentDriversFooterCounts(): void
+    {
+        // A pg COPY row can reproduce the one-line mysqldump footer exactly
+        $full = self::pgDumpPlain(false);
+        $copyHeader = "FROM stdin;\n";
+        $cut = substr($full, 0, (int)strpos($full, $copyHeader) + strlen($copyHeader)) . "-- Dump completed on 2026-10-26 12:00:00\n";
+        $path = $this->write($cut);
+        $this->assertRejected(
+            fn() => CraftDatabaseDumper::assertDumpComplete($path, DumpFormat::Plain, pgsql: true),
+            'not a complete plain SQL dump',
+        );
+
+        // And the other way round: a pg footer never ends a MySQL dump
+        $mysql = $this->write(str_replace("-- Dump completed on 2026-10-26 12:00:00\n", "--\n-- PostgreSQL database dump complete\n--\n", self::mysqldumpTwoStep()));
+        $this->assertRejected(
+            fn() => CraftDatabaseDumper::assertDumpComplete($mysql, DumpFormat::Plain, pgsql: false),
+            'not a complete plain SQL dump',
+        );
     }
 
     public function testMysqldumpMarkerWithoutDumpDatePasses(): void
     {
         // --skip-dump-date writes the marker without the timestamp
         $path = $this->write(str_replace(' on 2026-10-26 12:00:00', '', self::mysqldumpTwoStep()));
-        CraftDatabaseDumper::assertDumpComplete($path, DumpFormat::Plain);
+        CraftDatabaseDumper::assertDumpComplete($path, DumpFormat::Plain, pgsql: false);
         $this->addToAssertionCount(1);
     }
 
@@ -196,7 +216,7 @@ final class DumpContentCheckTest extends TestCase
         // Archive padding is not part of an SQL dump
         $path = $this->write(self::pgDumpPlain(true) . str_repeat("\0", 1024));
         $this->assertRejected(
-            fn() => CraftDatabaseDumper::assertDumpComplete($path, DumpFormat::Plain),
+            fn() => CraftDatabaseDumper::assertDumpComplete($path, DumpFormat::Plain, pgsql: true),
             'not a complete plain SQL dump',
         );
     }
@@ -205,7 +225,7 @@ final class DumpContentCheckTest extends TestCase
     {
         $path = $this->write(self::pgDumpPlain(false) . "CREATE TABLE public.extra (id integer);\n");
         $this->assertRejected(
-            fn() => CraftDatabaseDumper::assertDumpComplete($path, DumpFormat::Plain),
+            fn() => CraftDatabaseDumper::assertDumpComplete($path, DumpFormat::Plain, pgsql: true),
             'not a complete plain SQL dump',
         );
     }
@@ -213,7 +233,7 @@ final class DumpContentCheckTest extends TestCase
     public function testCustomArchiveSkipsTheCompletionCheck(): void
     {
         $path = $this->write('PGDMP' . "\x00\x01\x02");
-        CraftDatabaseDumper::assertDumpComplete($path, DumpFormat::Custom);
+        CraftDatabaseDumper::assertDumpComplete($path, DumpFormat::Custom, pgsql: true);
         $this->addToAssertionCount(1);
     }
 
@@ -281,6 +301,28 @@ final class DumpContentCheckTest extends TestCase
         // A tar header (file name + NUL padding) comes before the SQL it wraps
         $tar = str_pad('backup.sql', 512, "\0") . self::pgDumpPlain(true) . str_repeat("\0", 1024);
         $path = $this->write($tar);
+        $this->assertRejected(
+            fn() => CraftDatabaseDumper::assertDumpLooksLike($path, DumpFormat::Plain),
+            'not a plain SQL dump',
+        );
+    }
+
+    public function testTarMemberNamedLikeAStatementIsRejected(): void
+    {
+        // The member name "SET.sql" reads as a statement start; the NUL
+        // padding of the tar header is what gives the archive away
+        $tar = str_pad('SET.sql', 512, "\0") . self::pgDumpPlain(true) . str_repeat("\0", 1024);
+        $path = $this->write($tar);
+        $this->assertRejected(
+            fn() => CraftDatabaseDumper::assertDumpLooksLike($path, DumpFormat::Plain),
+            'not a plain SQL dump',
+        );
+    }
+
+    public function testNulByteInTheHeadIsRejected(): void
+    {
+        // mysqldump and pg_dump escape NUL in row data; a raw NUL means binary output
+        $path = $this->write("SET a = 1;\nINSERT INTO t VALUES ('a\0b');\n");
         $this->assertRejected(
             fn() => CraftDatabaseDumper::assertDumpLooksLike($path, DumpFormat::Plain),
             'not a plain SQL dump',

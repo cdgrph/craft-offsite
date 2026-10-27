@@ -22,8 +22,9 @@ use PHPUnit\Framework\TestCase;
  */
 final class BackupCommandFormatTest extends TestCase
 {
-    /** Smallest plain dump that passes both content checks (statement + completion marker) */
+    /** Smallest plain dumps that pass both content checks (statement + the driver's footer) */
     private const PLAIN_DUMP = "-- fake dump\nSET x = 1;\n-- Dump completed on 2026-10-26 12:00:00\n";
+    private const PG_PLAIN_DUMP = "-- fake dump\nSET x = 1;\n--\n-- PostgreSQL database dump complete\n--\n";
 
     private string $configDir;
     private string $workDir;
@@ -179,7 +180,7 @@ final class BackupCommandFormatTest extends TestCase
 
     public function testPgsqlDefaultNullDumpsPlain(): void
     {
-        $db = new FakeDbConnection(true, $this->schemaWithFormatSupport(), self::PLAIN_DUMP);
+        $db = new FakeDbConnection(true, $this->schemaWithFormatSupport(), self::PG_PLAIN_DUMP);
         $this->bootApp('[]', $db);
 
         $result = (new CraftDatabaseDumper())->dump($this->workDir);
