@@ -205,10 +205,24 @@ final class DumpContentCheckTest extends TestCase
 
     public function testMysqldumpMarkerWithoutDumpDatePasses(): void
     {
-        // --skip-dump-date writes the marker without the timestamp
-        $path = $this->write(str_replace(' on 2026-10-26 12:00:00', '', self::mysqldumpTwoStep()));
-        CraftDatabaseDumper::assertDumpComplete($path, DumpFormat::Plain, pgsql: false);
+        // --skip-dump-date writes the marker without the timestamp, with LF or CRLF
+        $lf = str_replace(' on 2026-10-26 12:00:00', '', self::mysqldumpTwoStep());
+        foreach ([$lf, str_replace("\n", "\r\n", $lf)] as $bytes) {
+            CraftDatabaseDumper::assertDumpComplete($this->write($bytes), DumpFormat::Plain, pgsql: false);
+        }
         $this->addToAssertionCount(1);
+    }
+
+    public function testTailWindowStartingMidLineIsNotALineStart(): void
+    {
+        // The read window can open in the middle of a long row; the marker text
+        // found there is row data, not a line of its own
+        $value = '-- Dump completed on ' . str_repeat('y', 4096 - 21);
+        $path = $this->write("SET a = 1;\nINSERT INTO `t` VALUES ('" . str_repeat('x', 10000) . $value);
+        $this->assertRejected(
+            fn() => CraftDatabaseDumper::assertDumpComplete($path, DumpFormat::Plain, pgsql: false),
+            'not a complete plain SQL dump',
+        );
     }
 
     public function testNulPaddingAfterTheMarkerIsRejected(): void

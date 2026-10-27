@@ -234,11 +234,17 @@ final class CraftDatabaseDumper implements DatabaseDumper
             return;
         }
         $size = (int)filesize($path);
-        $tail = (string)file_get_contents($path, false, null, max(0, $size - self::TAIL_BYTES));
+        $start = max(0, $size - self::TAIL_BYTES);
+        $tail = (string)file_get_contents($path, false, null, $start);
+        if ($start > 0) {
+            // The window can open mid-line; that partial line is not a line start
+            $newline = strpos($tail, "\n");
+            $tail = $newline === false ? '' : substr($tail, $newline + 1);
+        }
         $complete = false;
         $footer = $pgsql
             ? '/^--\r?\n-- PostgreSQL database dump complete\r?\n--\r?$/m'
-            : '/^-- Dump completed(?: on .*)?$/m';
+            : '/^-- Dump completed(?: on .*)?\r?$/m';
         if (preg_match_all($footer, $tail, $m, PREG_OFFSET_CAPTURE)) {
             [$marker, $offset] = end($m[0]);
             $complete = true;
