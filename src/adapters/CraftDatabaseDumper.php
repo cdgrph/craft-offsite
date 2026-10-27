@@ -13,8 +13,8 @@ use cdgrph\offsite\engine\DumpResult;
  */
 final class CraftDatabaseDumper implements DatabaseDumper
 {
-    /** Bytes read from the start of a dump for the shape check */
-    private const HEAD_BYTES = 4096;
+    /** Bytes read from the start of a dump for the shape check (room for long comment headers) */
+    private const HEAD_BYTES = 1048576;
 
     /** Bytes read from the end of a dump for the completion check */
     private const TAIL_BYTES = 4096;
@@ -135,25 +135,51 @@ final class CraftDatabaseDumper implements DatabaseDumper
             }
             return;
         }
-        // Comment lines alone never qualify: psql runs a comment-only file as a
-        // successful no-op, which would let an empty rollback point "restore".
         // A pg_dump custom archive contains strings like SET inside its binary and
         // can slip past the statement match, so the PGDMP magic is rejected explicitly
-        $statements = (string)preg_replace('/^[ \t]*--.*$/m', '', $head);
         $notSql = str_starts_with($head, 'PGDMP')
-            || !preg_match('/\b(?:SET|CREATE|INSERT|DROP)\b/i', $statements);
+            || !preg_match('/\b(?:SET|CREATE|INSERT|DROP)\b/i', self::skipLeadingComments($head));
         if ($notSql) {
             throw new \RuntimeException('Backup output is not a plain SQL dump. Check backupCommandFormat / backupCommand.');
         }
     }
 
     /**
+     * Returns $sql from its first non-comment content on, or '' when there is
+     * none. Comments alone never qualify: psql runs a comment-only file as a
+     * successful no-op, which would let an empty rollback point "restore".
+     * Skips whitespace, line comments and plain block comments (closed or cut
+     * off); MySQL /*! *\/ and MariaDB /*M! *\/ comments are executed, so they
+     * count as content.
+     * Only the leading run is skipped — a "/*" inside row data further down
+     * must not swallow the statements before it.
+     */
+    private static function skipLeadingComments(string $sql): string
+    {
+        $len = strlen($sql);
+        $pos = 0;
+        while (($pos += strspn($sql, " \t\r\n", $pos)) < $len) {
+            if (substr_compare($sql, '--', $pos, 2) === 0) {
+                $end = strpos($sql, "\n", $pos);
+                $pos = $end === false ? $len : $end + 1;
+            } elseif (substr_compare($sql, '/*', $pos, 2) === 0 && !preg_match('/\G\/\*M?!/', $sql, $m, 0, $pos)) {
+                $end = strpos($sql, '*/', $pos + 2);
+                $pos = $end === false ? $len : $end + 2;
+            } else {
+                return substr($sql, $pos);
+            }
+        }
+        return '';
+    }
+
+    /**
      * Verifies that a plain SQL dump ran to completion: mysqldump/mariadb-dump
      * end with "-- Dump completed", pg_dump with "-- PostgreSQL database dump
      * complete". Only the last marker counts, and nothing but blank lines,
-     * comments and pg_dump's \unrestrict line may follow it — Craft's MySQL
-     * command appends a second mysqldump run, so an earlier marker only proves
-     * the schema part finished. Custom archives are not covered.
+     * bare "--" lines and pg_dump's \unrestrict line may follow it — Craft's
+     * MySQL command appends a second mysqldump run, so an earlier marker only
+     * proves the schema part finished, and a run that stopped after writing its
+     * comment header must not pass. Custom archives are not covered.
      *
      * Applies to dumps produced in this environment (backup run, pre-restore
      * rollback point), not to downloaded backups: the catalog's SHA-256 pins
@@ -173,7 +199,7 @@ final class CraftDatabaseDumper implements DatabaseDumper
             $complete = true;
             foreach (preg_split('/\R/', substr($tail, $offset + strlen($marker))) ?: [] as $line) {
                 $line = trim($line);
-                if ($line !== '' && !str_starts_with($line, '--') && !str_starts_with($line, '\\unrestrict ')) {
+                if ($line !== '' && $line !== '--' && !str_starts_with($line, '\\unrestrict ')) {
                     $complete = false;
                     break;
                 }

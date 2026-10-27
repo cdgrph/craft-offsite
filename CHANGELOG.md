@@ -4,7 +4,7 @@
 
 ### Changed
 - Plain SQL dumps must now end with the dump tool's completion marker (`-- Dump completed` for mysqldump / mariadb-dump, `-- PostgreSQL database dump complete` for pg_dump); a dump without it fails the backup run. The check also covers the pre-restore rollback dump taken by `offsite/restore/db`.
-- A plain SQL dump made only of comment lines is now rejected, for backup runs, restores and the pre-restore rollback dump alike.
+- A plain SQL dump made only of comments is now rejected, for backup runs, restores and the pre-restore rollback dump alike.
 - Failure notifications now name dump content problems ("Database dump incomplete" / "Database dump has an unexpected format") instead of reporting an unexpected error.
 
 ### Compatibility

@@ -49,7 +49,7 @@ return [
 
 Before a backup run commits, Offsite inspects the dump file itself, independent of what the configuration promised:
 
-- **Plain SQL** must contain at least one SQL statement outside comment lines, and must end with the completion marker that the dump tool writes when it finishes: `-- Dump completed` (mysqldump / mariadb-dump) or `-- PostgreSQL database dump complete` (pg_dump). Only blank lines, comments and pg_dump's `\unrestrict` line may follow the marker.
+- **Plain SQL** must contain an SQL statement within its first 1 MiB, after any leading comments (MySQL `/*! ... */` comments count as statements), and must end with the completion marker that the dump tool writes when it finishes: `-- Dump completed` (mysqldump / mariadb-dump) or `-- PostgreSQL database dump complete` (pg_dump). Only blank lines, bare `--` lines and pg_dump's `\unrestrict` line may follow the marker.
 - **pg_dump custom archives** must start with the pg_dump archive magic. Their completeness is not checked.
 
 A dump that fails these checks fails the run and triggers your failure notifications. With Craft's default backup command, a dump tool that stops early with an error already fails the run through its exit code; the completion check matters mainly for `backupCommand` overrides, where a pipeline can hide the dump tool's exit status. **If you override `backupCommand`, keep comments in the output** — `--skip-comments` and `--compact` (mysqldump) remove the completion marker, so every run fails.
