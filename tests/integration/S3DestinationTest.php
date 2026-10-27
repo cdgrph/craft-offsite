@@ -17,7 +17,7 @@ final class S3DestinationTest extends TestCase
     protected function setUp(): void
     {
         if (getenv('OFFSITE_TEST_S3') !== '1') {
-            self::markTestSkipped('Set OFFSITE_TEST_S3=1 with MinIO running (docker compose up -d).');
+            self::markTestSkipped('Set OFFSITE_TEST_S3=1 with the S3-compatible test server running (docker compose up -d).');
         }
         $this->client = new S3Client([
             'version' => 'latest',
