@@ -9,7 +9,7 @@
 
 ### Compatibility
 - If you override `backupCommand`, keep comments in the dump output: `--skip-comments` and `--compact` remove the completion marker, so every backup run fails after updating.
-- Restoring a downloaded backup does not require the completion marker, so backups taken before this release still restore. They must still start with `SET`, `CREATE`, `INSERT`, `DROP`, `LOCK`, `USE`, `BEGIN`, `START` or a MySQL `/*! ... */` comment, as mysqldump, mariadb-dump and pg_dump output does.
+- Restoring a downloaded backup does not require the completion marker, but older backups must still pass the start check: no NUL bytes in the first 1 MiB, and within it, after leading comments, a `SET`, `CREATE`, `INSERT`, `DROP`, `LOCK`, `USE`, `BEGIN` or `START` statement or a MySQL `/*! ... */` comment. Output from mysqldump, mariadb-dump and pg_dump passes this check.
 
 ## 1.1.0 - 2026-08-23
 
