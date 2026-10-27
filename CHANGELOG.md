@@ -1,6 +1,6 @@
 # Release Notes for Offsite
 
-## Unreleased
+## 1.2.0 - 2026-10-27
 
 ### Changed
 - Plain SQL dumps must now end with the dump tool's completion marker (`-- Dump completed` for mysqldump / mariadb-dump, `-- PostgreSQL database dump complete` for pg_dump); a dump without it fails the backup run. The check also covers the pre-restore rollback dump taken by `offsite/restore/db`.
