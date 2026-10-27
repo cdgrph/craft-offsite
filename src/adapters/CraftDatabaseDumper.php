@@ -182,11 +182,15 @@ final class CraftDatabaseDumper implements DatabaseDumper
     {
         $len = strlen($sql);
         $depth = 0;
+        $open = -1;
         $close = -1;
         while ($pos < $len) {
-            $open = strpos($sql, '/*', $pos);
-            // Reuse the closer until it is consumed: rescanning for it on every
-            // opener would make a run of openers quadratic
+            // Reuse each search result until it is consumed: rescanning for the
+            // next opener on every closer (or the next closer on every opener)
+            // would make deep nesting quadratic
+            if ($open !== false && $open < $pos) {
+                $open = strpos($sql, '/*', $pos);
+            }
             if ($close !== false && $close < $pos) {
                 $close = strpos($sql, '*/', $pos);
             }

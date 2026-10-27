@@ -362,6 +362,15 @@ final class DumpContentCheckTest extends TestCase
         $this->addToAssertionCount(1);
     }
 
+    public function testDeeplyNestedCommentHeaderIsScannedInLinearTime(): void
+    {
+        // ~600 KB of nesting: a quadratic rescan takes tens of seconds here
+        $path = $this->write(str_repeat('/* ', 100000) . str_repeat('*/ ', 100000) . "SET x = 1;\n");
+        $started = microtime(true);
+        CraftDatabaseDumper::assertDumpLooksLike($path, DumpFormat::Plain);
+        self::assertLessThan(2.0, microtime(true) - $started);
+    }
+
     public function testExecutableCommentsCountAsStatements(): void
     {
         // MySQL /*! ... */ and MariaDB /*M! ... */ comments are executed
